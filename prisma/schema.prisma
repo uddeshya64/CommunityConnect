@@ -42,6 +42,7 @@ model User {
   subscription_status String             @default("free")
   tenant_policy       Json?              @default("{}")
   google_id           String?            @unique
+  user_settings       Json?              @default("{}")
   custom_event_types  EventType[]        @relation("UserEventTypes")
   event_roles         EventUserRole[]
   events_created      Event[]            @relation("CreatedEvents")

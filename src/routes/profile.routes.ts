@@ -18,6 +18,27 @@ router.patch(
   ProfileController.updateMyProfile
 );
 
+// Get user settings
+router.get(
+  "/me/settings",
+  authenticate,
+  ProfileController.getSettings
+);
+
+// Update user settings
+router.patch(
+  "/me/settings",
+  authenticate,
+  ProfileController.updateSettings
+);
+
+// Delete own account
+router.delete(
+  "/me",
+  authenticate,
+  ProfileController.deleteAccount
+);
+
 // Public profile by id
 router.get(
   "/:id",

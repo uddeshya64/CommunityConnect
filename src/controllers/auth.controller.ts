@@ -532,20 +532,38 @@ redirectUrl.searchParams.set(
       });
 
 
-    }
-    catch(error:any){
-
+    } catch (error: any) {
       return res.status(400).json({
-
-        success:false,
-
-        error:error.message,
-
+        success: false,
+        error: error.message,
       });
-
     }
-
   },
 
-
+  // POST /api/auth/change-password
+  async changePassword(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+        });
+      }
+      const { currentPassword, newPassword } = req.body;
+      const result = await AuthService.changePassword(
+        req.user.id,
+        currentPassword,
+        newPassword
+      );
+      return res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
 };

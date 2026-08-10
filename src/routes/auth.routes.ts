@@ -59,6 +59,14 @@ router.post(
   AuthController.resetPassword
 );
 
+// ---------------- Change Password ----------------
+
+router.post(
+  "/change-password",
+  authenticate,
+  AuthController.changePassword
+);
+
 
 // =====================================================
 // GOOGLE OAUTH
