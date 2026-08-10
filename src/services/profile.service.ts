@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
+
 const prisma = new PrismaClient();
 
 export class ProfileService {
@@ -7,7 +8,7 @@ export class ProfileService {
   // ==========================================
   // GET USER PROFILE BY ID
   // ==========================================
-  static async getProfile(userId: number) {
+  static async getProfile(userId: number, viewerId?: number) {
     const user = await prisma.user.findUnique({
       where: {
         id: userId,
@@ -28,6 +29,7 @@ export class ProfileService {
         avatar_url: true,
         bio: true,
         location: true,
+        user_settings: true,
         created_at: true,
         updated_at: true,
 
@@ -79,6 +81,41 @@ export class ProfileService {
     }
 
     // ==========================================
+    // PRIVACY & VISIBILITY ENFORCEMENT
+    // ==========================================
+    if (viewerId !== undefined && viewerId !== userId) {
+      const settings: any = user.user_settings || {};
+      const visibility = settings.profileVisibility || "public";
+      const showEmail = settings.showEmailOnProfile ?? false;
+      const showLocation = settings.showLocationOnProfile ?? true;
+
+      // 1. Profile Visibility enforcement
+      if (visibility === "private") {
+        return {
+          id: user.id,
+          name: "Private Community Member",
+          avatar_url: user.avatar_url,
+          isPrivate: true,
+          bio: "This profile is set to private.",
+        };
+      }
+
+      if (visibility === "community" && !viewerId) {
+        throw new Error("This profile is visible to logged-in CommunityConnect members only.");
+      }
+
+      // 2. Field-level privacy masking
+      if (!showEmail) {
+        delete (user as any).email;
+        delete (user as any).phone;
+      }
+
+      if (!showLocation) {
+        delete (user as any).location;
+      }
+    }
+
+    // ==========================================
     // RETURN PROFILE
     // ==========================================
     return user;
@@ -114,11 +151,66 @@ export class ProfileService {
         avatar_url: true,
         bio: true,
         location: true,
+        user_settings: true,
         created_at: true,
         updated_at: true,
       },
     });
 
     return updatedUser;
+  }
+
+  // ==========================================
+  // GET USER SETTINGS
+  // ==========================================
+  static async getSettings(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { user_settings: true },
+    });
+    if (!user) {
+      throw new Error("User not found");
+    }
+    return user.user_settings || {};
+  }
+
+  // ==========================================
+  // UPDATE USER SETTINGS
+  // ==========================================
+  static async updateSettings(userId: number, settingsData: any) {
+    const current = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { user_settings: true },
+    });
+    if (!current) {
+      throw new Error("User not found");
+    }
+    const existingSettings = (current.user_settings as Record<string, any>) || {};
+    const mergedSettings = { ...existingSettings, ...settingsData };
+
+    if (settingsData.twoFactorEnabled === false) {
+      delete mergedSettings.twoFactorSecret;
+      delete mergedSettings.twoFactorBackupCodes;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        user_settings: mergedSettings,
+        updated_at: new Date(),
+      },
+      select: { user_settings: true },
+    });
+    return updated.user_settings;
+  }
+
+  // ==========================================
+  // DELETE USER ACCOUNT
+  // ==========================================
+  static async deleteAccount(userId: number) {
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+    return { success: true, message: "Account deleted successfully" };
   }
 }

@@ -350,9 +350,13 @@ export class AuthService {
     }
 
     // Create session
-    return await SessionService.createSession(
+    const session = await SessionService.createSession(
       user
     );
+    return {
+      ...session,
+      user_settings: user.user_settings || {},
+    };
   }
 
   // =====================================================
@@ -376,5 +380,58 @@ export class AuthService {
     return await SessionService.createSession(
       user
     );
+  }
+
+  // =====================================================
+  // CHANGE PASSWORD FOR AUTHENTICATED USER
+  // =====================================================
+
+  static async changePassword(
+    userId: number,
+    currentPassword?: string,
+    newPassword?: string
+  ) {
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error(
+        "New password must be at least 8 characters long."
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new Error("User not found.");
+    }
+
+    // If user already has a password, verify currentPassword
+    if (user.password_hash) {
+      if (!currentPassword) {
+        throw new Error(
+          "Current password is required."
+        );
+      }
+      const isMatch = await bcrypt.compare(
+        currentPassword,
+        user.password_hash
+      );
+      if (!isMatch) {
+        throw new Error(
+          "Current password is incorrect."
+        );
+      }
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password_hash: hash },
+    });
+
+    return {
+      message: "Password updated successfully.",
+    };
   }
 }
