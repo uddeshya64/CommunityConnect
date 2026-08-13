@@ -52,6 +52,7 @@ model User {
   team_memberships    TeamMember[]
   teams_led           Team[]             @relation("TeamLeader")
   sessions            UserSession[]
+  agendas             UserAgenda[]
 
   @@map("users")
 }
@@ -101,6 +102,7 @@ model Event {
   registrations      Registration[]
   submissions        Submission[]
   teams              Team[]
+  agendas            UserAgenda[]
 
   @@map("events")
 }
@@ -270,14 +272,39 @@ model EventTimeline {
   title         String    @db.VarChar(100)
   speaker_name  String?   @db.VarChar(100)
   description   String?
+  tags          String[]  @default([])
   start_time    DateTime
   end_time      DateTime?
   location      String?
   should_notify Boolean   @default(true)
   is_notified   Boolean   @default(false)
-  event         Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  event         Event        @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  agendas       UserAgenda[]
 
   @@map("event_timelines")
+}
+
+model UserAgenda {
+  id           Int          @id @default(autoincrement())
+  user_id      Int
+  event_id     Int
+  timeline_id  Int
+  status       AgendaStatus @default(RECOMMENDED)
+  match_score  Float
+  created_at   DateTime     @default(now())
+
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event        Event         @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  timeline     EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, timeline_id])
+  @@map("user_agendas")
+}
+
+enum AgendaStatus {
+  RECOMMENDED
+  ACCEPTED
+  DECLINED
 }
 
 enum EventMode {

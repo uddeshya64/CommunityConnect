@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { config } from '../config/env';
 import { EmailService } from './email.service';
+import { RecommendationService } from './recommendation.service';
 
 const prisma = new PrismaClient();
 
@@ -293,6 +294,11 @@ export class CheckoutService {
       console.error(`[EMAIL_ERROR] Failed to send email for registration ${result.registrationId}:`, err)
     );
 
+    // Trigger ML Personal Agenda recommendation engine
+    prisma.registration.findUnique({ where: { id: result.registrationId } }).then(reg => {
+      if (reg) RecommendationService.generatePersonalAgenda(reg.user_id, reg.event_id).catch(() => {});
+    });
+
     return { success: result.success, registrationId: result.registrationId };
   }
   // 2. VERIFY SECURE SIGNATURE & ACTIVATE TEAM
@@ -361,6 +367,11 @@ export class CheckoutService {
     EmailService.sendRegistrationConfirmationEmail(result.registrationId).catch(err => 
       console.error(`[EMAIL_ERROR] Failed to send email for registration ${result.registrationId}:`, err)
     );
+
+    // Trigger ML Personal Agenda recommendation engine
+    prisma.registration.findUnique({ where: { id: result.registrationId } }).then(reg => {
+      if (reg) RecommendationService.generatePersonalAgenda(reg.user_id, reg.event_id).catch(() => {});
+    });
 
     return { success: result.success, teamId: result.teamId };
   }
