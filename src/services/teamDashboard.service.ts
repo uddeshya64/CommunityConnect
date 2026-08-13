@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { EmailService } from './email.service'; 
 import { config } from '../config/env';
+import { PushService } from './push.service';
 
 const prisma = new PrismaClient();
 
@@ -191,7 +192,10 @@ export class TeamDashboardService {
 
   // 3. INVITE A MEMBER (Moved from Checkout Service)
   static async inviteMember(teamId: number, leaderId: number, inviteeEmail: string) {
-    const team = await prisma.team.findUnique({ where: { id: teamId } });
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { event: { select: { title: true } } }
+    });
     if (!team || team.leader_id !== leaderId) {
       throw new Error("Unauthorized: Only the team leader can invite members");
     }
@@ -232,9 +236,16 @@ export class TeamDashboardService {
       }
     });
 
-    // 3. Fire & Forget email (Don't await it so the API responds instantly)
+    // 3. Fire & Forget email and push notification
     const magicLink = `${config.FRONTEND_URL}/join-team?token=${token}`;
     EmailService.sendTeamInvite(normalizedEmail, team.name, magicLink).catch(console.error);
+    PushService.sendPushToEmail(normalizedEmail, {
+      title: 'Team Invitation Received',
+      body: `You've been invited to join team "${team.name}" for ${team.event?.title || 'an event'}.`,
+      url: `/join-team?token=${token}`,
+      tag: `team-invite-${team.id}`,
+      actions: [{ action: 'open', title: 'View Invitation' }],
+    }).catch(console.error);
 
     return invite;
   }
@@ -308,7 +319,7 @@ export class TeamDashboardService {
       include: { 
         team: {
           include: {
-            event: { select: { max_team_size: true, capacity: true } },
+            event: { select: { title: true, max_team_size: true, capacity: true } },
             _count: { select: { members: true } }
           }
         } 
@@ -433,6 +444,17 @@ export class TeamDashboardService {
     EmailService.sendRegistrationConfirmationEmail(result.registrationId).catch(err => 
       console.error(`[EMAIL_ERROR] Failed to send email for registration ${result.registrationId}:`, err)
     );
+
+    // Notify the Team Leader via Push Notification
+    PushService.sendPushToUser(invite.team.leader_id, {
+      title: "New Team Member Joined! 👥",
+      body: `${user.name || user.email} has joined your team "${invite.team.name}" for ${invite.team.event.title}.`,
+      url: `/events/${invite.team.event_id}`,
+      tag: `team-member-joined-${invite.team_id}`,
+      actions: [{ action: "open", title: "View Team" }],
+    }).catch((err) => {
+      console.error(`[PUSH_ERROR] Failed to send team member joined push:`, err.message);
+    });
 
     return { 
       success: result.success, 

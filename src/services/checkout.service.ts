@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { config } from '../config/env';
 import { EmailService } from './email.service';
+import { PushService } from './push.service';
 
 const prisma = new PrismaClient();
 
@@ -13,6 +14,26 @@ const razorpay = new Razorpay({
 });
 
 export class CheckoutService {
+  // Helper to send registration confirmation push notification
+  static async sendRegistrationPush(registrationId: number) {
+    try {
+      const reg = await prisma.registration.findUnique({
+        where: { id: registrationId },
+        include: { event: true, user: true }
+      });
+      if (!reg) return;
+
+      await PushService.sendPushToUser(reg.user_id, {
+        title: "Registration Confirmed! 🎉",
+        body: `You're all set for "${reg.event.title}". Tap to view your entry pass & QR ticket.`,
+        url: `/events/${reg.event_id}`,
+        tag: `ticket-${reg.id}`,
+        actions: [{ action: "open", title: "View Ticket" }],
+      });
+    } catch (err: any) {
+      console.error(`[PUSH_ERROR] Failed to send registration push for ${registrationId}:`, err.message);
+    }
+  }
 // ==========================================
   // 1. TEAM REGISTRATION FLOW (UPDATED)
   // ==========================================
