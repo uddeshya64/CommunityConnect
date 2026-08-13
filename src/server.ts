@@ -32,8 +32,7 @@ import locationRoutes from "./routes/location.routes";
 import organizerConfigRoutes from "./routes/organizerConfig.routes";
 import imageRoutes from "./routes/image";
 import registrationRoutes from "./routes/registeration.routes";
-
-
+import { EventSchedulerService } from "./services/eventScheduler.service";
 
 import { config } from "./config/env";
 
@@ -324,6 +323,9 @@ const startServer = async () => {
         `🛡️ Environment: ${config.NODE_ENV || "development"
         }`
       );
+
+      // Start Event Background Notification Scheduler
+      EventSchedulerService.startScheduler();
     });
   } catch (error) {
     console.error(

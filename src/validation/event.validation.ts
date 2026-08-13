@@ -117,15 +117,18 @@ export const UpdateEventSchema = EventBaseObject.partial().refine(
 );
 
 // EVENT TIMELINE (AGENDA) VALIDATION
-export const TimelineSchema = z.object({
+export const BaseTimelineSchema = z.object({
   title: z.string().min(1, "Title is required").max(100),
   speaker_name: z.string().max(100).optional().nullable(),
   description: z.string().optional().nullable(),
+  tags: z.array(z.string().min(1).max(50)).default([]),
   start_time: z.coerce.date(),
   end_time: z.coerce.date().optional().nullable(),
   location: z.string().optional().nullable(),
   should_notify: z.boolean().default(true),
-}).refine(
+});
+
+export const TimelineSchema = BaseTimelineSchema.refine(
   (data) => {
     if (data.start_time && data.end_time) {
       return data.start_time < data.end_time;

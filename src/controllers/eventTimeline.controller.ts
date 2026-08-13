@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { TimelineSchema } from '../validation/event.validation';
+import { TimelineSchema, BaseTimelineSchema } from '../validation/event.validation';
 
 const prisma = new PrismaClient();
 
@@ -41,6 +41,7 @@ export const EventTimelineController = {
           title: validatedData.title,
           speaker_name: validatedData.speaker_name,
           description: validatedData.description,
+          tags: validatedData.tags || [],
           start_time: validatedData.start_time,
           end_time: validatedData.end_time,
           location: validatedData.location,
@@ -75,7 +76,18 @@ export const EventTimelineController = {
       }
 
       // Validate partial schema
-      const validatedData = TimelineSchema.partial().parse(req.body);
+      const validatedData = BaseTimelineSchema.partial().refine(
+        (data) => {
+          if (data.start_time && data.end_time) {
+            return data.start_time < data.end_time;
+          }
+          return true;
+        },
+        {
+          message: "End time must be after start time",
+          path: ["end_time"],
+        }
+      ).parse(req.body);
 
       const updated = await prisma.eventTimeline.update({
         where: { id: timelineId },
@@ -83,6 +95,7 @@ export const EventTimelineController = {
           title: validatedData.title,
           speaker_name: validatedData.speaker_name,
           description: validatedData.description,
+          tags: validatedData.tags !== undefined ? validatedData.tags : undefined,
           start_time: validatedData.start_time,
           end_time: validatedData.end_time,
           location: validatedData.location,

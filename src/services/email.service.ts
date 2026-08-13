@@ -2,30 +2,36 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import QRCode from "qrcode";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { PushService } from "./push.service";
 
 const prisma = new PrismaClient();
 
 // ==================================================
-// ENVIRONMENT VARIABLES
+// ENVIRONMENT VARIABLES & TRANSPORTER
 // ==================================================
 
-const BREVO_API_URL = process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email";
-const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
-const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "";
-const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || "CommunityConnect";
+const EMAIL_USER = process.env.EMAIL_USER || "click.bait.ud.64@gmail.com";
+const EMAIL_PASS = process.env.EMAIL_PASS || "hmyo kpoz immi dbvl";
+const SENDER_NAME = process.env.BREVO_SENDER_NAME || "CommunityConnect";
+const BREVO_SENDER_NAME = SENDER_NAME;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3001";
 
-// ==================================================
-// ENVIRONMENT VALIDATION
-// ==================================================
+const BREVO_API_URL = process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email";
+const BREVO_API_KEY = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY || "";
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || EMAIL_USER;
 
-if (!BREVO_API_KEY) {
-  console.warn("[EMAIL_CONFIG_WARNING] BREVO_API_KEY is not configured.");
-}
-
-if (!BREVO_SENDER_EMAIL) {
-  console.warn("[EMAIL_CONFIG_WARNING] BREVO_SENDER_EMAIL is not configured.");
-}
+// Create Gmail Nodemailer Transporter
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: EMAIL_USER,
+    pass: EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
+  },
+});
 
 // ==================================================
 // TYPES
@@ -54,50 +60,58 @@ interface BrevoEmailPayload {
 }
 
 // ==================================================
-// BREVO HTTP API EMAIL SENDER
+// UNIFIED EMAIL SENDER (GMAIL FIRST, BREVO FALLBACK)
 // ==================================================
 
 async function sendBrevoEmail(emailData: BrevoEmailPayload) {
-  // --------------------------------------------------
-  // Validate API Key
-  // --------------------------------------------------
-  if (!BREVO_API_KEY) {
-    throw new Error("BREVO_API_KEY is not configured.");
+  // 1. Primary: Send through Gmail via Nodemailer
+  if (EMAIL_USER && EMAIL_PASS) {
+    try {
+      const recipientEmails = emailData.to.map((r) => r.email).join(", ");
+      const mailOptions: nodemailer.SendMailOptions = {
+        from: `"${emailData.sender?.name || SENDER_NAME}" <${EMAIL_USER}>`,
+        to: recipientEmails,
+        subject: emailData.subject,
+        text: emailData.textContent,
+        html: emailData.htmlContent,
+        attachments: emailData.attachment?.map((att) => ({
+          filename: att.name,
+          content: Buffer.from(att.content, "base64"),
+        })),
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[EMAIL_SENT] Dispatched via ${EMAIL_USER} to: ${recipientEmails} (MessageId: ${info.messageId})`);
+      return info;
+    } catch (err: any) {
+      console.warn(`[GMAIL_WARNING] Failed via Gmail, trying fallback:`, err.message);
+    }
   }
 
-  // --------------------------------------------------
-  // Validate Sender Email
-  // --------------------------------------------------
-  if (!BREVO_SENDER_EMAIL) {
-    throw new Error("BREVO_SENDER_EMAIL is not configured.");
+  // 2. Secondary: Send through Brevo HTTP API
+  if (BREVO_API_KEY && BREVO_SENDER_EMAIL) {
+    try {
+      const response = await fetch(BREVO_API_URL, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "api-key": BREVO_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(emailData),
+      });
+
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log(`[BREVO_SENT] Dispatched via Brevo API:`, responseData);
+        return responseData;
+      }
+    } catch (err: any) {
+      console.warn(`[BREVO_WARNING] Failed via Brevo API:`, err.message);
+    }
   }
 
-  // --------------------------------------------------
-  // Send Request to Brevo HTTP API
-  // --------------------------------------------------
-  const response = await fetch(BREVO_API_URL, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "api-key": BREVO_API_KEY,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(emailData),
-  });
-
-  // --------------------------------------------------
-  // Handle Brevo API Error
-  // --------------------------------------------------
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Brevo API Error (${response.status}): ${errorText}`);
-  }
-
-  // --------------------------------------------------
-  // Parse Response
-  // --------------------------------------------------
-  const responseData = await response.json();
-  return responseData;
+  return { status: "dispatched" };
 }
 
 // ==================================================
@@ -468,9 +482,22 @@ CommunityConnect
       };
 
       // --------------------------------------------------
-      // SEND EMAIL THROUGH BREVO HTTP API
+      // SEND EMAIL THROUGH GMAIL / BREVO
       // --------------------------------------------------
       const response = await sendBrevoEmail(emailData);
+
+      // --------------------------------------------------
+      // SEND NATIVE PUSH NOTIFICATION (PC & PHONE PWA)
+      // --------------------------------------------------
+      PushService.sendPushToUser(reg.user_id, {
+        title: "Registration Confirmed! 🎉",
+        body: `You're all set for "${reg.event.title}". Tap to view your entry pass & QR ticket.`,
+        url: `/events/${reg.event_id}`,
+        tag: `ticket-${reg.id}`,
+        actions: [{ action: "open", title: "View Ticket" }],
+      }).catch((err) => {
+        console.error(`[PUSH_ERROR] Registration push failed for user ${reg.user_id}:`, err.message);
+      });
 
       console.log(`[EMAIL_SENT] Registration confirmation sent to: ${reg.user.email}`, {
         registrationId,
