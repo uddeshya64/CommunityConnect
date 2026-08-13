@@ -179,7 +179,8 @@ export class AuthService {
 
     // Create login session
     return await SessionService.createSession(
-      user
+      user,
+      undefined // We can't easily pass it through verifyRegisterOtp unless we add it to the signature. Let's add it.
     );
   }
 
@@ -311,7 +312,8 @@ export class AuthService {
 
   static async loginWithEmail(
     email: string,
-    password: string
+    password: string,
+    deviceInfo?: { ipAddress?: string, userAgent?: string }
   ) {
     // Find user
     const user =
@@ -351,7 +353,8 @@ export class AuthService {
 
     // Create session
     const session = await SessionService.createSession(
-      user
+      user,
+      deviceInfo
     );
     return {
       ...session,
@@ -364,7 +367,8 @@ export class AuthService {
   // =====================================================
 
   static async loginWithGoogle(
-    user: any
+    user: any,
+    deviceInfo?: { ipAddress?: string, userAgent?: string }
   ) {
     // Passport should provide
     // the authenticated user
@@ -378,7 +382,8 @@ export class AuthService {
     // using the same session logic
     // as email/password login.
     return await SessionService.createSession(
-      user
+      user,
+      deviceInfo
     );
   }
 
