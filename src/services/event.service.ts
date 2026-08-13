@@ -318,7 +318,8 @@ export class EventService {
     const whereClause: Prisma.EventWhereInput = search ? {
       OR: [
         { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
+        { description: { contains: search, mode: 'insensitive' } },
+        { timelines: { some: { tags: { has: search } } } },
       ]
     } : {};
 
@@ -329,18 +330,24 @@ export class EventService {
       orderBy: { start_date: 'asc' },
       include: {
         creator: { select: { id: true, name: true, avatar_url: true } },
-        type: { select: { name: true } }
+        type: { select: { name: true } },
+        timelines: { select: { tags: true } }
       }
     });
 
     const total = await prisma.event.count({ where: whereClause });
 
-    // Map response to keep type as string
+    // Map response to keep type as string and aggregate tags
     const formattedEvents = events.map(evt => {
-      const { type, ...rest } = evt;
+      const { type, timelines, ...rest } = evt;
+      const aggregatedTags = Array.from(
+        new Set((timelines || []).flatMap(t => t.tags || []))
+      );
+
       return {
         ...rest,
-        type: type.name
+        type: type.name,
+        tags: aggregatedTags,
       };
     });
 
@@ -413,7 +420,10 @@ export class EventService {
     }
 
     const { type, ...rest } = event;
-    return { ...rest, type: type.name, user_context: userContext };
+    const aggregatedTags = Array.from(
+      new Set((event.timelines || []).flatMap((t) => t.tags || []))
+    );
+    return { ...rest, type: type.name, tags: aggregatedTags, user_context: userContext };
   }
 
   // 4. UPDATE EVENT
