@@ -13,34 +13,25 @@ import { SessionService } from "../services/session.service";
 import { config } from "../config/env";
 import { JwtUtil } from "../utils/jwt";
 
-
 export const AuthController = {
-
-
   // POST /api/auth/email/init
   async initiateEmailReg(
     req: Request,
     res: Response
   ) {
-
     try {
-
       const {
         email,
         password,
         context = "REGISTER",
       } = SendOtpSchema.parse(req.body);
 
-
       if (context === "REGISTER" && !password) {
-
         return res.status(400).json({
           success:false,
           error:"Password is required for registration",
         });
-
       }
-
 
       await AuthService.sendOtp(
         email,
@@ -48,15 +39,11 @@ export const AuthController = {
         context
       );
 
-
       return res.status(200).json({
         success:true,
         message:"Verification code sent to email",
       });
-
-
     } catch(error:any){
-
       return res.status(
         error.name==="ZodError" ? 400 : 500
       )
@@ -64,122 +51,66 @@ export const AuthController = {
         success:false,
         error:error.message,
       });
-
     }
-
   },
-
-
 
   // POST /api/auth/email/verify
   async verifyEmailReg(
     req:Request,
     res:Response
   ){
-
     try{
-
-
-      const validatedData =
-      VerifyEmailOtpSchema.parse(req.body);
-
-
+      const validatedData = VerifyEmailOtpSchema.parse(req.body);
 
       if(validatedData.context==="REGISTER"){
-
-
-        const tokens =
-        await AuthService.verifyRegisterOtp(
+        const tokens = await AuthService.verifyRegisterOtp(
           validatedData.name || "User",
           validatedData.email,
           validatedData.otp
         );
 
-
         return res.status(201).json({
-
           success:true,
           ...tokens,
-
-          message:
-          "Registration successful",
-
+          message: "Registration successful",
         });
-
-
       }
 
-
-
-      const resetToken =
-      await AuthService.verifyResetOtp(
+      const resetToken = await AuthService.verifyResetOtp(
         validatedData.email,
         validatedData.otp
       );
 
-
       return res.status(200).json({
-
         success:true,
-
         token:resetToken,
-
         message:"OTP verified",
-
       });
-
-
     }
     catch(error:any){
-
       return res.status(400).json({
-
         success:false,
-
         error:error.message,
-
       });
-
     }
-
   },
-
-
-
 
   // POST /api/auth/login
   async login(
     req:Request,
     res:Response
   ){
-
     try{
-
-
-      const {
-        email,
-        password
-      } = req.body;
-
-
+      const { email, password } = req.body;
 
       if(!email || !password){
-
         return res.status(400).json({
-
           success:false,
-
-          error:
-          "Email and password are required",
-
+          error: "Email and password are required",
         });
-
       }
 
-
-
-      const tokens =
-      await AuthService.loginWithEmail(
+      const tokens = await AuthService.loginWithEmail(
         email,
         password,
         {
@@ -188,313 +119,158 @@ export const AuthController = {
         }
       );
 
-
-
       return res.status(200).json({
-
         success:true,
-
         ...tokens,
-
       });
-
-
     }
     catch(error:any){
-
       return res.status(401).json({
-
         success:false,
-
         error:error.message,
-
       });
-
     }
-
   },
 
-
-
-
   // ====================================
-  // GOOGLE OAUTH LOGIN
+  // GOOGLE OAUTH LOGIN & CALLBACK
   // ====================================
-
 
   // GET /api/auth/google/callback
   async googleLogin(
     req:Request,
     res:Response
   ){
-
     try{
-
-
-   const user:any = req.user ? req.user : null;
+      const user:any = req.user ? req.user : null;
       console.log("user:", user);
 
-
       if(!user){
-
         return res.status(401).json({
-
           success:false,
-
-          message:
-          "Google authentication failed",
-
+          message: "Google authentication failed",
         });
-
       }
 
+      const tokens = await AuthService.loginWithGoogle(user);
+      console.log('Tokens:', tokens);
 
+      let returnUrlToUse: string | null = null;
+      if (req.query?.state) {
+        try {
+          const parsedState = JSON.parse(req.query.state as string);
+          if (parsedState && parsedState.returnUrl) {
+            returnUrlToUse = parsedState.returnUrl;
+          }
+        } catch {
+          if (typeof req.query.state === "string" && req.query.state.startsWith("http")) {
+            returnUrlToUse = req.query.state;
+          }
+        }
+      }
 
-     const tokens =
-await AuthService.loginWithGoogle(
-  user,
-  {
-    ipAddress: req.ip || req.socket.remoteAddress,
-    userAgent: req.headers["user-agent"]
-  }
-);
-console.log('Tokens:', tokens);
-
-
-     const redirectUrl =
-      new URL(
-        `${config.FRONTEND_URL}/home`
-      );
-      redirectUrl.searchParams.set(
-        "accessToken",
-        tokens.accessToken
-      );
-
-
-      redirectUrl.searchParams.set(
-        "refreshToken",
-        tokens.refreshToken
+      const tokens = await AuthService.loginWithGoogle(
+        user,
+        {
+          ipAddress: req.ip || req.socket.remoteAddress,
+          userAgent: req.headers["user-agent"]
+        }
       );
 
-redirectUrl.searchParams.set(
-  "name",
-  user.name
-);
+      const redirectUrl = new URL(`${config.FRONTEND_URL}/oauth-success`);
+      redirectUrl.searchParams.set("accessToken", tokens.accessToken);
+      redirectUrl.searchParams.set("refreshToken", tokens.refreshToken);
+      redirectUrl.searchParams.set("name", user.name || "");
+      redirectUrl.searchParams.set("email", user.email || "");
 
+      if (returnUrlToUse && returnUrlToUse.startsWith("http")) {
+        redirectUrl.searchParams.set("returnUrl", returnUrlToUse);
+      }
 
-redirectUrl.searchParams.set(
-  "email",
-  user.email
-);
-
-
-      return res.redirect(
-        redirectUrl.toString()
-      );
-
-
-
+      return res.redirect(redirectUrl.toString());
     }
     catch(error:any){
-
-
-      console.error(
-        "Google Login Error:",
-        error
-      );
-
-
+      console.error("Google Login Error:", error);
       return res.status(500).json({
-
         success:false,
-
-        message:
-        "Google authentication failed",
-
+        message: "Google authentication failed",
       });
-
     }
-
   },
 
-
-
-
   // POST /api/auth/reset-password
-
   async resetPassword(
     req:Request,
     res:Response
   ){
-
     try{
-
-
-      const {
-        token,
-        newPassword
-
-      } =
-      ResetPasswordSchema.parse(
-        req.body
-      );
-
-
-
-      await AuthService.resetPassword(
-        token,
-        newPassword
-      );
-
-
+      const { token, newPassword } = ResetPasswordSchema.parse(req.body);
+      await AuthService.resetPassword(token, newPassword);
 
       return res.json({
-
         success:true,
-
-        message:
-        "Password updated successfully. Please login.",
-
+        message: "Password updated successfully. Please login.",
       });
-
-
-
     }
     catch(error:any){
-
       return res.status(400).json({
-
         success:false,
-
         error:error.message,
-
       });
-
     }
-
   },
 
-
-
-
   // POST /api/auth/refresh
-
   async refresh(
     req:Request,
     res:Response
   ){
-
     try{
-
-
-      const {
-        refreshToken
-      } = req.body;
-
-
-
+      const { refreshToken } = req.body;
       if(!refreshToken){
-
         return res.status(400).json({
-
           success:false,
-
-          error:
-          "Refresh token is required",
-
+          error: "Refresh token is required",
         });
-
       }
-
-
-
-      const token =
-      await SessionService.refreshSession(
-        refreshToken
-      );
-
-
-
+      const token = await SessionService.refreshSession(refreshToken);
       return res.status(200).json({
-
         success:true,
-
         ...token,
-
       });
-
-
-
     }
     catch(error:any){
-
       return res.status(401).json({
-
         success:false,
-
         error:error.message,
-
       });
-
     }
-
   },
 
-
-
-
   // POST /api/auth/logout
-
   async logout(
     req:Request,
     res:Response
   ){
-
     try{
-
-
       if(!req.user){
-
         return res.status(401).json({
-
           success:false,
-
           error:"Unauthorized",
-
         });
-
       }
-
-
-
-      await SessionService.logout(
-        req.user.sessionId
-      );
-
-
-
+      await SessionService.logout((req.user as any).sessionId);
       return res.status(200).json({
-
         success:true,
-
-        message:
-        "Logged out successfully",
-
+        message: "Logged out successfully",
       });
-
-
     }
     catch(error:any){
-
       return res.status(400).json({
-
         success:false,
-
         error:error.message,
-
       });
     }
-
   },
 
   // ====================================
@@ -571,40 +347,28 @@ redirectUrl.searchParams.set(
   },
 
   // POST /api/auth/logout-all
-
   async logoutAll(
     req:Request,
     res:Response
   ){
-
     try{
-
-
       if(!req.user){
-
         return res.status(401).json({
-
           success:false,
-
           error:"Unauthorized",
-
         });
-
       }
-
-
 
       await SessionService.logoutAll(
         req.user.id,
-        req.user.sessionId
+        req.user.sessionId || ""
       );
 
       return res.status(200).json({
         success:true,
         message: "Logged out from all other devices",
       });
-
-
+      });
     } catch (error: any) {
       return res.status(400).json({
         success: false,
@@ -624,7 +388,7 @@ redirectUrl.searchParams.set(
       }
       const { currentPassword, newPassword } = req.body;
       const result = await AuthService.changePassword(
-        req.user.id,
+        (req.user as any).id,
         currentPassword,
         newPassword
       );

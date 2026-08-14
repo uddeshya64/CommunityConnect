@@ -47,15 +47,14 @@ model User {
   event_roles         EventUserRole[]
   events_created      Event[]              @relation("CreatedEvents")
   mentor_assignments  MentorAssignment[]
-  push_subscriptions  push_subscriptions[]
   registrations       Registration[]
   submissions         Submission[]
   team_memberships    TeamMember[]
   teams_led           Team[]               @relation("TeamLeader")
-  user_agendas        user_agendas[]
   sessions            UserSession[]
   push_subscriptions  PushSubscription[]
-  user_agendas        UserAgenda[]
+  agendas             UserAgenda[]
+  saved_events        SavedEvent[]
 
   @@map("users")
 }
@@ -109,7 +108,8 @@ model Event {
   registrations      Registration[]
   submissions        Submission[]
   teams              Team[]
-  user_agendas       UserAgenda[]
+  agendas            UserAgenda[]
+  saved_by           SavedEvent[]
 
   @@map("events")
 }
@@ -286,7 +286,7 @@ model EventTimeline {
   should_notify Boolean      @default(true)
   is_notified   Boolean      @default(false)
   event         Event        @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  user_agendas  UserAgenda[]
+  agendas       UserAgenda[]
 
   @@map("event_timelines")
 }
@@ -299,9 +299,10 @@ model UserAgenda {
   status      AgendaStatus  @default(RECOMMENDED)
   match_score Float
   created_at  DateTime      @default(now())
-  event       Event         @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  timeline    EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event       Event         @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  timeline    EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, timeline_id])
   @@map("user_agendas")
@@ -350,4 +351,16 @@ model PushSubscription {
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("push_subscriptions")
+}
+
+model SavedEvent {
+  user_id    Int
+  event_id   Int
+  saved_at   DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event      Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, event_id])
+  @@map("saved_events")
 }
