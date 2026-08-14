@@ -1,4 +1,4 @@
-﻿import passport from "passport";
+import passport from "passport";
 import {
   Strategy as GoogleStrategy,
   Profile,
@@ -60,6 +60,11 @@ passport.use(
           user = await prisma.user.findUnique({ where: { email } });
         }
 
+        // 3. Otherwise fallback to google_id lookup
+        if (!user && googleId) {
+          user = await prisma.user.findUnique({ where: { google_id: googleId } });
+        }
+
         if (user) {
           const existingSettings = (user.user_settings as any) || {};
           
@@ -74,12 +79,24 @@ passport.use(
             calendar_sync_enabled: existingSettings.calendar_sync_enabled === true
           };
 
+          const updateData: any = {
+            user_settings: updatedSettings
+          };
+
+          // Only set google_id if the user doesn't already have one,
+          // AND no other user account in the database is already using this google_id.
+          if (!user.google_id && googleId) {
+            const existingGoogleUser = await prisma.user.findUnique({
+              where: { google_id: googleId }
+            });
+            if (!existingGoogleUser) {
+              updateData.google_id = googleId;
+            }
+          }
+
           user = await prisma.user.update({
             where: { id: user.id },
-            data: {
-              google_id: user.google_id || googleId,
-              user_settings: updatedSettings
-            }
+            data: updateData
           });
 
           return done(null, user);
