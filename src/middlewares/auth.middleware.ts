@@ -1,7 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { JwtUtil } from "../utils/jwt";
 
-export const authenticate = (
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+export const authenticate = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -20,9 +24,20 @@ export const authenticate = (
 
     const decoded = JwtUtil.verifyAccessToken(token);
 
+    // Verify session still exists in DB
+    const session = await prisma.userSession.findUnique({
+      where: { sessionId: decoded.sessionId }
+    });
+
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        error: "Session has been revoked or logged out",
+      });
+    }
+
     req.user = decoded;
 
-    console.log(req.user);
     next();
   } catch {
     return res.status(401).json({
@@ -32,7 +47,7 @@ export const authenticate = (
   }
 };
 
-export const optionalAuthenticate = (
+export const optionalAuthenticate = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -46,7 +61,15 @@ export const optionalAuthenticate = (
 
     const token = authHeader.split(" ")[1];
 
-    req.user = JwtUtil.verifyAccessToken(token);
+    const decoded = JwtUtil.verifyAccessToken(token);
+
+    const session = await prisma.userSession.findUnique({
+      where: { sessionId: decoded.sessionId }
+    });
+
+    if (session) {
+      req.user = decoded;
+    }
 
     next();
   } catch {

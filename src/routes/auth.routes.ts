@@ -43,6 +43,22 @@ router.post(
   AuthController.logout
 );
 
+// ---------------- Get Active Sessions ----------------
+
+router.get(
+  "/sessions",
+  authenticate,
+  AuthController.getSessions
+);
+
+// ---------------- Revoke Specific Session ----------------
+
+router.delete(
+  "/sessions/:id",
+  authenticate,
+  AuthController.revokeSession
+);
+
 // ---------------- Logout All Devices ----------------
 
 router.post(

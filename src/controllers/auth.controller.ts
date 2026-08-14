@@ -181,7 +181,11 @@ export const AuthController = {
       const tokens =
       await AuthService.loginWithEmail(
         email,
-        password
+        password,
+        {
+          ipAddress: req.ip || req.socket.remoteAddress,
+          userAgent: req.headers["user-agent"]
+        }
       );
 
 
@@ -247,7 +251,13 @@ export const AuthController = {
 
 
      const tokens =
-await AuthService.loginWithGoogle(user);
+await AuthService.loginWithGoogle(
+  user,
+  {
+    ipAddress: req.ip || req.socket.remoteAddress,
+    userAgent: req.headers["user-agent"]
+  }
+);
 console.log('Tokens:', tokens);
 
 
@@ -483,14 +493,82 @@ redirectUrl.searchParams.set(
         error:error.message,
 
       });
-
     }
 
   },
 
+  // ====================================
+  // GET ACTIVE SESSIONS
+  // ====================================
 
+  async getSessions(
+    req:Request,
+    res:Response
+  ){
+    try{
+      if(!req.user){
+        return res.status(401).json({ success:false, error:"Unauthorized" });
+      }
 
+      const sessions = await SessionService.getSessions(req.user.id);   
+      
+      const currentSessionId = req.user!.sessionId;
 
+      const formattedSessions = sessions.map(sess => {
+        const s: any = sess;
+        return {
+          id: s.sessionId,
+          device: s.device || "Unknown Device",
+          browser: s.browser || "Unknown Browser",
+          ip: s.ipAddress || "Unknown IP",
+          lastActive: s.lastActive,
+          isCurrent: s.sessionId === currentSessionId
+        };
+      });
+
+      return res.status(200).json({
+        success:true,
+        data: formattedSessions
+      });
+
+    }
+    catch(error:any){
+      return res.status(400).json({ success:false, error:error.message });
+    }
+  },
+
+  // ====================================
+  // REVOKE SPECIFIC SESSION
+  // ====================================
+
+  async revokeSession(
+    req:Request,
+    res:Response
+  ){
+    try{
+      if(!req.user){
+        return res.status(401).json({ success:false, error:"Unauthorized" });
+      }
+
+      // normalize possible string | string[] from params
+      let sessionId = req.params.id as string | string[] | undefined;
+      if (Array.isArray(sessionId)) sessionId = sessionId[0];
+      if (!sessionId) {
+        return res.status(400).json({ success:false, error:"Session ID is required" });
+      }
+
+      await SessionService.revokeSession(sessionId, req.user.id);
+
+      return res.status(200).json({
+        success:true,
+        message: "Session revoked successfully"
+      });
+
+    }
+    catch(error:any){
+      return res.status(400).json({ success:false, error:error.message });
+    }
+  },
 
   // POST /api/auth/logout-all
 
@@ -517,18 +595,13 @@ redirectUrl.searchParams.set(
 
 
       await SessionService.logoutAll(
-        req.user.id
+        req.user.id,
+        req.user.sessionId
       );
 
-
-
       return res.status(200).json({
-
         success:true,
-
-        message:
-        "Logged out from all devices",
-
+        message: "Logged out from all other devices",
       });
 
 

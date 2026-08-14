@@ -21,36 +21,38 @@ model EventType {
 }
 
 model User {
-  id                  Int                @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   name                String
-  email               String             @unique
+  email               String               @unique
   phone               String?
   password_hash       String?
   skills              String[]
   linkedin            String?
   github              String?
   profession          String?
-  created_at          DateTime           @default(now())
-  updated_at          DateTime           @updatedAt
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
   avatar_url          String?
   bio                 String?
   location            String?
   fcm_token           String?
-  billing_info        Json?              @default("{}")
-  branding_config     Json?              @default("{}")
-  security_config     Json?              @default("{}")
-  subscription_status String             @default("free")
-  tenant_policy       Json?              @default("{}")
-  google_id           String?            @unique
-  user_settings       Json?              @default("{}")
-  custom_event_types  EventType[]        @relation("UserEventTypes")
+  billing_info        Json?                @default("{}")
+  branding_config     Json?                @default("{}")
+  security_config     Json?                @default("{}")
+  subscription_status String               @default("free")
+  tenant_policy       Json?                @default("{}")
+  google_id           String?              @unique
+  user_settings       Json?                @default("{}")
+  custom_event_types  EventType[]          @relation("UserEventTypes")
   event_roles         EventUserRole[]
-  events_created      Event[]            @relation("CreatedEvents")
+  events_created      Event[]              @relation("CreatedEvents")
   mentor_assignments  MentorAssignment[]
+  push_subscriptions  push_subscriptions[]
   registrations       Registration[]
   submissions         Submission[]
   team_memberships    TeamMember[]
-  teams_led           Team[]             @relation("TeamLeader")
+  teams_led           Team[]               @relation("TeamLeader")
+  user_agendas        user_agendas[]
   sessions            UserSession[]
   push_subscriptions  PushSubscription[]
   user_agendas        UserAgenda[]
@@ -64,6 +66,10 @@ model UserSession {
   refreshToken String
   sessionId    String   @unique
   expiresAt    DateTime
+  device       String?
+  browser      String?
+  ipAddress    String?
+  lastActive   DateTime? @default(now())
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
