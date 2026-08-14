@@ -312,7 +312,7 @@ export class EventService {
   }
 
   // 2. GET ALL EVENTS
-  static async getAllEvents(page = 1, limit = 10, search?: string) {
+  static async getAllEvents(page = 1, limit = 10, search?: string, userId?: number) {
     const skip = (page - 1) * limit;
 
     const whereClause: Prisma.EventWhereInput = search ? {
@@ -337,6 +337,15 @@ export class EventService {
 
     const total = await prisma.event.count({ where: whereClause });
 
+    let savedEventIds = new Set<number>();
+    if (userId) {
+      const saved = await prisma.savedEvent.findMany({
+        where: { user_id: userId },
+        select: { event_id: true }
+      });
+      savedEventIds = new Set(saved.map(s => s.event_id));
+    }
+
     // Map response to keep type as string and aggregate tags
     const formattedEvents = events.map(evt => {
       const { type, timelines, ...rest } = evt;
@@ -348,6 +357,7 @@ export class EventService {
         ...rest,
         type: type.name,
         tags: aggregatedTags,
+        is_saved: savedEventIds.has(evt.id)
       };
     });
 
@@ -384,7 +394,8 @@ export class EventService {
       registration_status: null as string | null,
       team_id: null as number | null,
       team_name: null as string | null,
-      registration_id: null as number | null
+      registration_id: null as number | null,
+      is_saved: false
     };
 
     if (userId) {
@@ -416,6 +427,13 @@ export class EventService {
         userContext.team_id = reg.team_id;
         userContext.team_name = reg.team?.name || null;
         userContext.registration_id = reg.id;
+      }
+
+      const saved = await prisma.savedEvent.findUnique({
+        where: { user_id_event_id: { user_id: userId, event_id: eventId } }
+      });
+      if (saved) {
+        userContext.is_saved = true;
       }
     }
 
@@ -517,5 +535,63 @@ export class EventService {
         is_system: true
       }
     });
+  }
+
+  // 7. SAVE EVENT
+  static async saveEvent(eventId: number, userId: number) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new Error("Event not found");
+
+    return prisma.savedEvent.upsert({
+      where: { user_id_event_id: { user_id: userId, event_id: eventId } },
+      create: { user_id: userId, event_id: eventId },
+      update: {}
+    });
+  }
+
+  // 8. UNSAVE EVENT
+  static async unsaveEvent(eventId: number, userId: number) {
+    try {
+      await prisma.savedEvent.delete({
+        where: { user_id_event_id: { user_id: userId, event_id: eventId } }
+      });
+    } catch (error) {
+      // Ignore if not found
+    }
+    return { success: true };
+  }
+
+  // 9. GET SAVED EVENTS
+  static async getSavedEvents(userId: number, page = 1, limit = 10) {
+    const skip = (page - 1) * limit;
+
+    const savedEvents = await prisma.savedEvent.findMany({
+      where: { user_id: userId },
+      skip,
+      take: limit,
+      orderBy: { saved_at: 'desc' },
+      include: {
+        event: {
+          include: {
+            creator: { select: { id: true, name: true, avatar_url: true } },
+            type: { select: { name: true } }
+          }
+        }
+      }
+    });
+
+    const total = await prisma.savedEvent.count({ where: { user_id: userId } });
+
+    const formattedEvents = savedEvents.map(se => {
+      const { type, ...rest } = se.event;
+      return {
+        ...rest,
+        type: type.name,
+        is_saved: true,
+        saved_at: se.saved_at
+      };
+    });
+
+    return { events: formattedEvents, total, totalPages: Math.ceil(total / limit) };
   }
 }

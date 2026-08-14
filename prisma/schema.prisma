@@ -21,39 +21,40 @@ model EventType {
 }
 
 model User {
-  id                  Int                @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   name                String
-  email               String             @unique
+  email               String               @unique
   phone               String?
   password_hash       String?
   skills              String[]
   linkedin            String?
   github              String?
   profession          String?
-  created_at          DateTime           @default(now())
-  updated_at          DateTime           @updatedAt
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
   avatar_url          String?
   bio                 String?
   location            String?
   fcm_token           String?
-  billing_info        Json?              @default("{}")
-  branding_config     Json?              @default("{}")
-  security_config     Json?              @default("{}")
-  subscription_status String             @default("free")
-  tenant_policy       Json?              @default("{}")
-  google_id           String?            @unique
-  user_settings       Json?              @default("{}")
-  custom_event_types  EventType[]        @relation("UserEventTypes")
+  billing_info        Json?                @default("{}")
+  branding_config     Json?                @default("{}")
+  security_config     Json?                @default("{}")
+  subscription_status String               @default("free")
+  tenant_policy       Json?                @default("{}")
+  google_id           String?              @unique
+  user_settings       Json?                @default("{}")
+  custom_event_types  EventType[]          @relation("UserEventTypes")
   event_roles         EventUserRole[]
-  events_created      Event[]            @relation("CreatedEvents")
+  events_created      Event[]              @relation("CreatedEvents")
   mentor_assignments  MentorAssignment[]
   registrations       Registration[]
   submissions         Submission[]
   team_memberships    TeamMember[]
-  teams_led           Team[]             @relation("TeamLeader")
+  teams_led           Team[]               @relation("TeamLeader")
   sessions            UserSession[]
   push_subscriptions  PushSubscription[]
-  user_agendas        UserAgenda[]
+  agendas             UserAgenda[]
+  saved_events        SavedEvent[]
 
   @@map("users")
 }
@@ -64,6 +65,10 @@ model UserSession {
   refreshToken String
   sessionId    String   @unique
   expiresAt    DateTime
+  device       String?
+  browser      String?
+  ipAddress    String?
+  lastActive   DateTime? @default(now())
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -103,7 +108,8 @@ model Event {
   registrations      Registration[]
   submissions        Submission[]
   teams              Team[]
-  user_agendas       UserAgenda[]
+  agendas            UserAgenda[]
+  saved_by           SavedEvent[]
 
   @@map("events")
 }
@@ -280,7 +286,7 @@ model EventTimeline {
   should_notify Boolean      @default(true)
   is_notified   Boolean      @default(false)
   event         Event        @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  user_agendas  UserAgenda[]
+  agendas       UserAgenda[]
 
   @@map("event_timelines")
 }
@@ -293,9 +299,10 @@ model UserAgenda {
   status      AgendaStatus  @default(RECOMMENDED)
   match_score Float
   created_at  DateTime      @default(now())
-  event       Event         @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  timeline    EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event       Event         @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  timeline    EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, timeline_id])
   @@map("user_agendas")
@@ -344,4 +351,16 @@ model PushSubscription {
   user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("push_subscriptions")
+}
+
+model SavedEvent {
+  user_id    Int
+  event_id   Int
+  saved_at   DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event      Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, event_id])
+  @@map("saved_events")
 }
