@@ -152,9 +152,6 @@ export const AuthController = {
         });
       }
 
-      const tokens = await AuthService.loginWithGoogle(user);
-      console.log('Tokens:', tokens);
-
       let returnUrlToUse: string | null = null;
       if (req.query?.state) {
         try {
@@ -367,7 +364,6 @@ export const AuthController = {
       return res.status(200).json({
         success:true,
         message: "Logged out from all other devices",
-      });
       });
     } catch (error: any) {
       return res.status(400).json({
