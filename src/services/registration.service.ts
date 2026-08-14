@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { RecommendationService } from "./recommendation.service";
 
 const prisma = new PrismaClient();
 
@@ -60,6 +61,11 @@ export class RegistrationService {
         data: {
           form_responses: customFields
         }
+      });
+
+      // Automatically generate ML Personal Agenda recommendations
+      RecommendationService.generatePersonalAgenda(userId, updatedRegistration.event_id).catch(err => {
+        console.error(`[AGENDA_RECOMMENDATION_ERROR] Failed to generate agenda for user ${userId} and event ${updatedRegistration.event_id}:`, err);
       });
 
       return updatedRegistration;

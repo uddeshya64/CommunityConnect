@@ -21,8 +21,9 @@ export const EventController = {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
       const search = req.query.search as string;
+      const userId = req.user?.id;
 
-      const result = await EventService.getAllEvents(page, limit, search);
+      const result = await EventService.getAllEvents(page, limit, search, userId);
       res.json({ success: true, data: result });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -85,6 +86,45 @@ export const EventController = {
       res.json({ success: true, message: "Event deleted successfully" });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  },
+
+  // POST /api/events/:id/save
+  async save(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.id);
+      if (isNaN(eventId)) return res.status(400).json({ error: "Invalid event ID" });
+      const userId = req.user!.id;
+      await EventService.saveEvent(eventId, userId);
+      res.json({ success: true, message: "Event saved" });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // DELETE /api/events/:id/save
+  async unsave(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.id);
+      if (isNaN(eventId)) return res.status(400).json({ error: "Invalid event ID" });
+      const userId = req.user!.id;
+      await EventService.unsaveEvent(eventId, userId);
+      res.json({ success: true, message: "Event unsaved" });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // GET /api/events/saved
+  async getSaved(req: Request, res: Response) {
+    try {
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
+      const userId = req.user!.id;
+      const result = await EventService.getSavedEvents(userId, page, limit);
+      res.json({ success: true, data: result });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   },
 
