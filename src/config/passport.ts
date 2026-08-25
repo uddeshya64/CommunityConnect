@@ -74,7 +74,9 @@ passport.use(
   return done(null, user);
 
 }
-
+const userSettings = {
+  theme: "dark"
+}
         // Create new Google user
         user = await prisma.user.create({
           data: {
@@ -82,6 +84,8 @@ passport.use(
             email,
             google_id: googleId,
             avatar_url: null,
+            user_settings:userSettings,
+
 
             // Google users don't need password
             password_hash: null,

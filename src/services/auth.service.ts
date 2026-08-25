@@ -161,7 +161,9 @@ export class AuthService {
         "Invalid OTP"
       );
     }
-
+const userSettings = {
+  theme: "dark"
+}
     // Create user
     const user =
       await prisma.user.create({
@@ -171,6 +173,7 @@ export class AuthService {
           password_hash:
             data.passwordHash,
           created_at: new Date(),
+          user_settings:userSettings
         },
       });
 
