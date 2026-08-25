@@ -47,13 +47,14 @@ model User {
   event_roles         EventUserRole[]
   events_created      Event[]              @relation("CreatedEvents")
   mentor_assignments  MentorAssignment[]
-  push_subscriptions  push_subscriptions[]
   registrations       Registration[]
   submissions         Submission[]
   team_memberships    TeamMember[]
   teams_led           Team[]               @relation("TeamLeader")
-  user_agendas        user_agendas[]
   sessions            UserSession[]
+  push_subscriptions  PushSubscription[]
+  agendas             UserAgenda[]
+  saved_events        SavedEvent[]
 
   @@map("users")
 }
@@ -107,7 +108,8 @@ model Event {
   registrations      Registration[]
   submissions        Submission[]
   teams              Team[]
-  user_agendas       user_agendas[]
+  agendas            UserAgenda[]
+  saved_by           SavedEvent[]
 
   @@map("events")
 }
@@ -272,48 +274,44 @@ model EventStaffInvite {
 }
 
 model EventTimeline {
-  id            Int            @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   event_id      Int
-  title         String         @db.VarChar(100)
-  speaker_name  String?        @db.VarChar(100)
+  title         String       @db.VarChar(100)
+  speaker_name  String?      @db.VarChar(100)
   description   String?
+  tags          String[]     @default([])
   start_time    DateTime
   end_time      DateTime?
   location      String?
-  should_notify Boolean        @default(true)
-  is_notified   Boolean        @default(false)
-  tags          String[]       @default([])
-  event         Event          @relation(fields: [event_id], references: [id], onDelete: Cascade)
-  user_agendas  user_agendas[]
+  should_notify Boolean      @default(true)
+  is_notified   Boolean      @default(false)
+  event         Event        @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  agendas       UserAgenda[]
 
   @@map("event_timelines")
 }
 
-model push_subscriptions {
-  id         Int      @id @default(autoincrement())
-  user_id    Int
-  endpoint   String   @unique
-  p256dh     String
-  auth       String
-  device     String?
-  user_agent String?
-  created_at DateTime @default(now())
-  users      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-}
+model UserAgenda {
+  id          Int           @id @default(autoincrement())
+  user_id     Int
+  event_id    Int
+  timeline_id Int
+  status      AgendaStatus  @default(RECOMMENDED)
+  match_score Float
+  created_at  DateTime      @default(now())
 
-model user_agendas {
-  id              Int           @id @default(autoincrement())
-  user_id         Int
-  event_id        Int
-  timeline_id     Int
-  status          AgendaStatus  @default(RECOMMENDED)
-  match_score     Float
-  created_at      DateTime      @default(now())
-  events          Event         @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  event_timelines EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users           User          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user        User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event       Event         @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  timeline    EventTimeline @relation(fields: [timeline_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, timeline_id])
+  @@map("user_agendas")
+}
+
+enum AgendaStatus {
+  RECOMMENDED
+  ACCEPTED
+  DECLINED
 }
 
 enum EventMode {
@@ -341,8 +339,28 @@ enum TeamStatus {
   disqualified
 }
 
-enum AgendaStatus {
-  RECOMMENDED
-  ACCEPTED
-  DECLINED
+model PushSubscription {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  device     String?  // 'android' | 'ios' | 'windows' | 'mac' | 'browser'
+  user_agent String?
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("push_subscriptions")
+}
+
+model SavedEvent {
+  user_id    Int
+  event_id   Int
+  saved_at   DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event      Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, event_id])
+  @@map("saved_events")
 }

@@ -8,7 +8,7 @@ const getUserId = (req: Request): number => {
     throw new Error("Unauthorized");
   }
 
-  return req.user.id;
+  return (req.user as any).id;
 };
 
 export const ProfileController = {

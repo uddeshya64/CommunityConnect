@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { PushService } from '../services/push.service';
 
 const prisma = new PrismaClient();
 
@@ -95,5 +96,94 @@ export const NotificationController = {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
-  }
+  },
+
+  async getPushStatus(req: Request, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const count = await prisma.pushSubscription.count({
+        where: { user_id: userId },
+      });
+      res.json({ success: true, isSubscribed: count > 0, count });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async getVapidPublicKey(req: Request, res: Response) {
+    try {
+      const publicKey = PushService.getVapidPublicKey();
+      res.json({ success: true, publicKey });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async subscribePush(req: Request, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const { subscription, device, userAgent } = req.body;
+
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        return res.status(400).json({ error: "Invalid push subscription object." });
+      }
+
+      const saved = await PushService.saveSubscription(userId, {
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        device: device || 'browser',
+        userAgent: userAgent || req.headers['user-agent'],
+      });
+
+      res.json({ success: true, message: "Push subscription saved successfully.", data: saved });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async unsubscribePush(req: Request, res: Response) {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) {
+        return res.status(400).json({ error: "Missing subscription endpoint." });
+      }
+
+      await PushService.removeSubscription(endpoint);
+      res.json({ success: true, message: "Unsubscribed successfully." });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async sendTestPush(req: Request, res: Response) {
+    try {
+      const userId = req.user!.id;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      });
+
+      const result = await PushService.sendPushToUser(userId, {
+        title: "CommunityConnect",
+        body: `Hello ${user?.name || 'there'}! Native system notifications are working on this device.`,
+        icon: "/icons/icon-192x192.png",
+        badge: "/icons/badge-72x72.png",
+        url: "/notifications",
+        tag: "test-notification",
+        actions: [
+          { action: "open", title: "Open App" }
+        ],
+      });
+
+      res.json({
+        success: true,
+        message: result.successful > 0
+          ? `Push notification sent successfully to ${result.successful} device(s).`
+          : "No active push subscriptions found. Please enable system push notifications first.",
+        result,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  },
 };

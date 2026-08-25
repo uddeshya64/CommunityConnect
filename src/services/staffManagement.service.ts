@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { EmailService } from './email.service';
 import { EVENT_PERMISSIONS, EventPermission } from '../utils/constants/permissions';
+import { PushService } from './push.service';
 
 const prisma = new PrismaClient();
 
@@ -88,11 +89,17 @@ export class EventStaffService {
       }
     });
 
-    // 5. Fire & Forget Email (Using your existing EmailService)
+    // 5. Fire & Forget Email and Push Notification
     const magicLink = `${process.env.FRONTEND_URL}/join-staff?token=${token}`;
     
-    // We can reuse the sendTeamInvite template, or you can make a specific `sendStaffInvite` method in EmailService later.
     EmailService.sendTeamInvite(email, `${role.event.title} as a ${role.name}`, magicLink).catch(console.error);
+    PushService.sendPushToEmail(email, {
+      title: 'Staff Invitation Received',
+      body: `You've been invited to join the staff for "${role.event.title}" as a ${role.name}.`,
+      url: `/join-staff?token=${token}`,
+      tag: `staff-invite-${role.event_id}`,
+      actions: [{ action: 'open', title: 'View Role' }],
+    }).catch(console.error);
 
     return { success: true, message: "Staff invitation sent successfully!" };
   }

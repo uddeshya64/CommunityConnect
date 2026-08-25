@@ -32,8 +32,8 @@ import locationRoutes from "./routes/location.routes";
 import organizerConfigRoutes from "./routes/organizerConfig.routes";
 import imageRoutes from "./routes/image";
 import registrationRoutes from "./routes/registeration.routes";
-
-
+import { EventSchedulerService } from "./services/eventScheduler.service";
+import agendaRoutes from "./routes/agenda.routes";
 
 import { config } from "./config/env";
 
@@ -60,7 +60,8 @@ app.use(helmet());
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
-  "http://192.168.20.39:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
   "https://community-connect-frontend-5oe1-beta.vercel.app",
   config.FRONTEND_URL,
 ].filter(Boolean);
@@ -68,8 +69,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests without origin
-      // Example: Postman, mobile apps, curl
+      // Allow requests without origin (Postman, mobile apps, curl)
       if (!origin) {
         return callback(null, true);
       }
@@ -80,9 +80,16 @@ app.use(
         return callback(null, true);
       }
 
+      // Allow localhost, 127.0.0.1, and local LAN IPs in development
+      if (
+        /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(cleanOrigin)
+      ) {
+        return callback(null, true);
+      }
+
       console.log("❌ Blocked by CORS:", origin);
 
-      return callback(new Error("Not allowed by CORS"));
+      return callback(null, false);
     },
 
     credentials: true,
@@ -99,7 +106,9 @@ app.use(
     allowedHeaders: [
       "Content-Type",
       "Authorization",
-      "Upgrade-Insecure-Requests",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
     ],
   })
 );
@@ -267,6 +276,11 @@ app.use(
 app.use("/api/registrations", registrationRoutes);
 
 // =========================================
+// PERSONAL AGENDA RECOMMENDATION ROUTES
+// =========================================
+app.use("/api/agenda", agendaRoutes);
+
+// =========================================
 // 4. GLOBAL ERROR HANDLER
 // =========================================
 
@@ -324,6 +338,9 @@ const startServer = async () => {
         `🛡️ Environment: ${config.NODE_ENV || "development"
         }`
       );
+
+      // Start Event Background Notification Scheduler
+      EventSchedulerService.startScheduler();
     });
   } catch (error) {
     console.error(
