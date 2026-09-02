@@ -38,7 +38,7 @@ export class CheckoutService {
 // ==========================================
   // 1. TEAM REGISTRATION FLOW (UPDATED)
   // ==========================================
-  static async initializeTeamRegistration(userId: number, eventId: number, teamName: string) {
+  static async initializeTeamRegistration(userId: number, eventId: number, teamName: string, members?: Array<{ email: string; role?: string }>) {
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) throw new Error("Event not found");
 
@@ -54,6 +54,59 @@ export class CheckoutService {
 
     const fee = Number(event.registration_fee);
     const isFree = fee === 0;
+
+    const leaderUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    const leaderEmail = leaderUser?.email?.toLowerCase();
+
+    const processMemberInvites = async (teamId: number, name: string) => {
+      if (!Array.isArray(members) || members.length === 0) return;
+      for (const m of members) {
+        if (!m.email || !m.email.trim()) continue;
+        const normalizedEmail = m.email.trim().toLowerCase();
+        if (leaderEmail && normalizedEmail === leaderEmail) continue;
+
+        try {
+          const token = crypto.randomBytes(32).toString('hex');
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 7);
+
+          await prisma.teamInvite.upsert({
+            where: {
+              team_id_email: {
+                team_id: teamId,
+                email: normalizedEmail
+              }
+            },
+            update: {
+              token: token,
+              expires_at: expiresAt,
+              status: 'pending'
+            },
+            create: {
+              team_id: teamId,
+              email: normalizedEmail,
+              token: token,
+              expires_at: expiresAt,
+              status: 'pending'
+            }
+          });
+
+          const magicLink = `${config.FRONTEND_URL}/join-team?token=${token}`;
+          EmailService.sendTeamInvite(normalizedEmail, name, magicLink).catch(err =>
+            console.error(`[EMAIL_ERROR] Failed to send team invite to ${normalizedEmail}:`, err)
+          );
+          PushService.sendPushToEmail(normalizedEmail, {
+            title: 'Team Invitation Received',
+            body: `You've been invited to join team "${name}" for ${event.title}.`,
+            url: `/join-team?token=${token}`,
+            tag: `team-invite-${teamId}`,
+            actions: [{ action: 'open', title: 'View Invitation' }],
+          }).catch(console.error);
+        } catch (inviteErr) {
+          console.error(`Error inviting member ${normalizedEmail}:`, inviteErr);
+        }
+      }
+    };
 
     // A. THE FIX: Check if the user already has a registration for this event
     const existingRegistration = await prisma.registration.findFirst({
@@ -79,6 +132,8 @@ export class CheckoutService {
           existingRegistration.team.name = teamName;
         }
 
+        await processMemberInvites(existingRegistration.team.id, teamName);
+
         if (isFree) {
           // Edge case: It was pending, but now it's free. Confirm it.
           await prisma.registration.update({ where: { id: existingRegistration.id }, data: { status: 'confirmed' } });
@@ -90,7 +145,6 @@ export class CheckoutService {
         }
 
         // Generate a fresh Razorpay order for the EXISTING team
-        // We append Date.now() to the receipt so Razorpay doesn't complain about duplicate receipts
         const amountInPaisa = fee * 100;
         const order = await razorpay.orders.create({
           amount: amountInPaisa,
@@ -129,37 +183,36 @@ export class CheckoutService {
         }
       });
 
-      if (isFree) {
-        await tx.payment.create({
-          data: {
-            registration_id: registration.id,
-            amount: 0,
-            currency: 'INR',
-            provider: 'SYSTEM',
-            status: 'success',
-            transaction_ref: `FREE_TEAM_${Date.now()}`
-          }
-        });
-        return { isFree: true, team, registration };
-      }
-
-      const amountInPaisa = fee * 100;
-      const order = await razorpay.orders.create({
-        amount: amountInPaisa,
-        currency: "INR",
-        receipt: `receipt_team_${team.id}`,
-      });
-
-      return { isFree: false, team, registration, order };
+      return { isFree, team, registration };
     });
 
-    if (result.isFree && result.registration.status === 'confirmed') {
+    await processMemberInvites(result.team.id, teamName);
+
+    if (isFree) {
+      await prisma.payment.create({
+        data: {
+          registration_id: result.registration.id,
+          amount: 0,
+          currency: 'INR',
+          provider: 'SYSTEM',
+          status: 'success',
+          transaction_ref: `FREE_TEAM_${Date.now()}`
+        }
+      });
       EmailService.sendRegistrationConfirmationEmail(result.registration.id).catch(err => 
         console.error(`[EMAIL_ERROR] Failed to send email for registration ${result.registration.id}:`, err)
       );
+      return { isFree: true, team: result.team, registration: result.registration };
     }
 
-    return result;
+    const amountInPaisa = fee * 100;
+    const order = await razorpay.orders.create({
+      amount: amountInPaisa,
+      currency: "INR",
+      receipt: `receipt_team_${result.team.id}`,
+    });
+
+    return { isFree: false, team: result.team, registration: result.registration, order };
   }
 
 
