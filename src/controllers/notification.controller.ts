@@ -8,17 +8,17 @@ export const NotificationController = {
   async getNotifications(req: Request, res: Response) {
     try {
       const userId = req.user!.id;
-      
+
       // 1. Fetch user to get their email address
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { email: true }
       });
-      
+
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      
+
       const email = user.email;
 
       // 2. Fetch pending team invites
@@ -183,12 +183,15 @@ export const NotificationController = {
         select: { name: true, email: true },
       });
 
+      const frontendUrl = "https://community-connect-frontend-5oe1-beta.vercel.app";
+      const targetUrl = `${frontendUrl.replace(/\/$/, "")}/notifications`;
+
       const result = await PushService.sendPushToUser(userId, {
         title: "CommunityConnect",
         body: `Hello ${user?.name || 'there'}! Native system notifications are working on this device.`,
         icon: "/icons/icon-192x192.png",
         badge: "/icons/badge-72x72.png",
-        url: "/notifications",
+        url: targetUrl,
         tag: "test-notification",
         actions: [
           { action: "open", title: "Open App" }

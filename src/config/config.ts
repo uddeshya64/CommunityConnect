@@ -20,7 +20,7 @@ const config = {
 
   FRONTEND_URL:
     process.env.FRONTEND_URL ||
-    "http://localhost:3001",
+    "https://community-connect-frontend-5oe1-beta.vercel.app",
 };
 
 export default config;
