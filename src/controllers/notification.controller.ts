@@ -64,7 +64,17 @@ export const NotificationController = {
         }
       });
 
-      // 4. Format them consistently
+      // 4. Fetch active staff assignments / role updates
+      const staffRoles = await prisma.eventUserRole.findMany({
+        where: { user_id: userId },
+        include: {
+          event: { select: { id: true, title: true, banner_url: true } },
+          role: { select: { name: true } }
+        },
+        orderBy: { assigned_at: 'desc' }
+      });
+
+      // 5. Format them consistently
       const teamInvitesFormatted = teamInvites.map(ti => ({
         id: `team_${ti.id}`,
         type: 'TEAM_INVITE',
@@ -87,8 +97,18 @@ export const NotificationController = {
         expires_at: si.expires_at
       }));
 
-      // 5. Combine and sort by date descending
-      const allNotifications = [...teamInvitesFormatted, ...staffInvitesFormatted].sort(
+      const roleUpdatesFormatted = staffRoles.map(sr => ({
+        id: `role_${sr.id}`,
+        type: 'ROLE_UPDATE',
+        eventId: sr.event.id,
+        roleName: sr.role.name,
+        eventName: sr.event.title,
+        eventBanner: sr.event.banner_url || null,
+        created_at: sr.assigned_at
+      }));
+
+      // 6. Combine and sort by date descending
+      const allNotifications = [...teamInvitesFormatted, ...staffInvitesFormatted, ...roleUpdatesFormatted].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 

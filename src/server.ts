@@ -27,6 +27,8 @@ import eventRoutes from "./routes/event.routes";
 import teamRoutes from "./routes/team.routes";
 import teamDashboardRoutes from "./routes/teamDashboard.routes";
 import eventStaffRoutes from "./routes/staffManagement.routes";
+import eventTaskRoutes from "./routes/staffTask.routes";
+import announcementRoutes from "./routes/announcement.routes";
 import notificationRoutes from "./routes/notification.routes";
 import locationRoutes from "./routes/location.routes";
 import organizerConfigRoutes from "./routes/organizerConfig.routes";
@@ -247,6 +249,24 @@ app.use(
 app.use(
   "/api/events/:eventId/staff",
   eventStaffRoutes
+);
+
+// =========================================
+// EVENT STAFF TASKS ROUTES
+// =========================================
+
+app.use(
+  "/api/events/:eventId/tasks",
+  eventTaskRoutes
+);
+
+// =========================================
+// EVENT ANNOUNCEMENTS ROUTES
+// =========================================
+
+app.use(
+  "/api/events/:eventId/announcements",
+  announcementRoutes
 );
 
 // =========================================

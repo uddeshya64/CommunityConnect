@@ -16,6 +16,19 @@
     EventStaffController.getRoles
   );
 
+  // GET /api/events/:eventId/staff OR /api/events/:eventId/staff/members
+  router.get('/',
+    authenticate,
+    requirePermission('MANAGE_STAFF'),
+    EventStaffController.getStaff
+  );
+
+  router.get('/members',
+    authenticate,
+    requirePermission('MANAGE_STAFF'),
+    EventStaffController.getStaff
+  );
+
   // POST /api/events/:eventId/staff/roles
   // Who can do this? Only God Mode (Creator) or someone with MANAGE_STAFF permission
   router.post('/roles', 
@@ -30,6 +43,27 @@
     authenticate, 
     requirePermission('MANAGE_STAFF'), 
     EventStaffController.inviteStaff
+  );
+
+  // PATCH /api/events/:eventId/staff/members/:userId
+  router.patch('/members/:userId',
+    authenticate,
+    requirePermission('MANAGE_STAFF'),
+    EventStaffController.updateStaff
+  );
+
+  // DELETE /api/events/:eventId/staff/members/:userId
+  router.delete('/members/:userId',
+    authenticate,
+    requirePermission('MANAGE_STAFF'),
+    EventStaffController.removeStaff
+  );
+
+  // DELETE /api/events/:eventId/staff/invites/:inviteId
+  router.delete('/invites/:inviteId',
+    authenticate,
+    requirePermission('MANAGE_STAFF'),
+    EventStaffController.cancelInvite
   );
 
   // POST /api/events/:eventId/manage/check-in
