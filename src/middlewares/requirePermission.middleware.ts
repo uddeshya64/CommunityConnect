@@ -39,13 +39,15 @@ export const requirePermission = (requiredPermission: any) => {
         return res.status(403).json({ error: "Access denied. You are not staff for this event." });
       }
 
-      // 5. Extract permissions from the base Role Definition AND any user-specific overrides
-      const rolePermissions = (staffRecord.role.permissions as string[]) || [];
-      const userOverrides = (staffRecord.permissions_override as string[]) || [];
+      // 5. Extract effective permissions (if user-specific overrides exist, use them; otherwise use base role permissions)
+      const userOverrides = staffRecord.permissions_override as string[] | null;
+      const effectivePermissions = Array.isArray(userOverrides)
+        ? userOverrides
+        : ((staffRecord.role.permissions as string[]) || []);
 
       // 6. Check if they have the specific atomic permission required for this route
       const permissionsToCheck = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
-      const hasAny = permissionsToCheck.some(p => rolePermissions.includes(p) || userOverrides.includes(p));
+      const hasAny = permissionsToCheck.some(p => effectivePermissions.includes(p));
 
       if (hasAny) {
         return next(); // Access Granted! Proceed to the Controller.

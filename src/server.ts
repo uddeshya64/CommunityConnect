@@ -27,6 +27,8 @@ import eventRoutes from "./routes/event.routes";
 import teamRoutes from "./routes/team.routes";
 import teamDashboardRoutes from "./routes/teamDashboard.routes";
 import eventStaffRoutes from "./routes/staffManagement.routes";
+import eventTaskRoutes from "./routes/staffTask.routes";
+import announcementRoutes from "./routes/announcement.routes";
 import notificationRoutes from "./routes/notification.routes";
 import locationRoutes from "./routes/location.routes";
 import organizerConfigRoutes from "./routes/organizerConfig.routes";
@@ -51,7 +53,11 @@ const PORT = Number(config.PORT) || 5000;
 // =========================================
 
 // Security headers
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 
 // =========================================
 // CORS
@@ -76,19 +82,14 @@ app.use(
 
       const cleanOrigin = origin.replace(/\/$/, "");
 
-      if (allowedOrigins.includes(cleanOrigin)) {
-        return callback(null, true);
-      }
-
-      // Allow localhost, 127.0.0.1, and local LAN IPs in development
       if (
+        allowedOrigins.includes(cleanOrigin) ||
         /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(cleanOrigin)
       ) {
         return callback(null, true);
       }
 
       console.log("❌ Blocked by CORS:", origin);
-
       return callback(null, false);
     },
 
@@ -109,7 +110,11 @@ app.use(
       "X-Requested-With",
       "Accept",
       "Origin",
+      "Access-Control-Allow-Origin",
+      "Access-Control-Allow-Headers",
     ],
+
+    optionsSuccessStatus: 200,
   })
 );
 
@@ -244,6 +249,24 @@ app.use(
 app.use(
   "/api/events/:eventId/staff",
   eventStaffRoutes
+);
+
+// =========================================
+// EVENT STAFF TASKS ROUTES
+// =========================================
+
+app.use(
+  "/api/events/:eventId/tasks",
+  eventTaskRoutes
+);
+
+// =========================================
+// EVENT ANNOUNCEMENTS ROUTES
+// =========================================
+
+app.use(
+  "/api/events/:eventId/announcements",
+  announcementRoutes
 );
 
 // =========================================

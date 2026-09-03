@@ -7,12 +7,12 @@ export const TeamController = {
 
   async startRegistration(req: Request, res: Response) {
     try {
-      const { eventId, teamName } = StartRegistrationSchema.parse(req.body);
+      const { eventId, teamName, members } = StartRegistrationSchema.parse(req.body);
       const userId = req.user!.id;
 
       // DYNAMIC DISPATCH: If teamName exists, use team flow; otherwise, use individual 
       const result = teamName 
-        ? await CheckoutService.initializeTeamRegistration(userId, Number(eventId), teamName)
+        ? await CheckoutService.initializeTeamRegistration(userId, Number(eventId), teamName, members)
         : await CheckoutService.initializeIndividualRegistration(userId, Number(eventId));
 
       if (result.isFree) {
