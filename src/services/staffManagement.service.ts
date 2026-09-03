@@ -335,16 +335,24 @@ export class EventStaffService {
       throw new Error("Cannot remove the event creator from event staff.");
     }
 
-    const staffRecord = await prisma.eventUserRole.findUnique({
-      where: { event_id_user_id: { event_id: eventId, user_id: targetUserId } }
-    });
-    if (!staffRecord) throw new Error("Staff member not found.");
-
-    await prisma.eventUserRole.delete({
-      where: { id: staffRecord.id }
+    const staffUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true }
     });
 
-    return { success: true, message: "Staff member removed successfully." };
+    // A. Delete EventUserRole (Revoke staff contract & access)
+    await prisma.eventUserRole.deleteMany({
+      where: { event_id: eventId, user_id: targetUserId }
+    });
+
+    // B. Delete any pending or accepted EventStaffInvite for this user's email
+    if (staffUser?.email) {
+      await prisma.eventStaffInvite.deleteMany({
+        where: { event_id: eventId, email: staffUser.email.toLowerCase() }
+      });
+    }
+
+    return { success: true, message: "Staff member removed and access revoked successfully." };
   }
 
   // 9. CANCEL / REVOKE PENDING INVITE
@@ -354,10 +362,26 @@ export class EventStaffService {
       throw new Error("Invitation not found.");
     }
 
-    await prisma.eventStaffInvite.delete({
-      where: { id: inviteId }
+    // A. Find if a user exists with this invited email
+    const invitedUser = await prisma.user.findUnique({
+      where: { email: invite.email.toLowerCase() }
     });
 
-    return { success: true, message: "Invitation cancelled." };
+    // B. Delete all invites for this email and event
+    await prisma.eventStaffInvite.deleteMany({
+      where: { event_id: eventId, email: invite.email.toLowerCase() }
+    });
+
+    // C. Delete any EventUserRole contract for this user on this event (revoking staff access immediately)
+    if (invitedUser) {
+      await prisma.eventUserRole.deleteMany({
+        where: {
+          event_id: eventId,
+          user_id: invitedUser.id
+        }
+      });
+    }
+
+    return { success: true, message: "Invitation cancelled and staff access revoked." };
   }
 }
