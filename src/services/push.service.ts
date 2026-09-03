@@ -71,6 +71,17 @@ export const PushService = {
     }
   },
 
+  async removeUserSubscriptions(userId: number) {
+    try {
+      await prisma.pushSubscription.deleteMany({
+        where: { user_id: userId },
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
   async sendPushToUser(userId: number, payload: PushPayload) {
     try {
       const subscriptions = await prisma.pushSubscription.findMany({

@@ -163,12 +163,14 @@ export const NotificationController = {
 
   async unsubscribePush(req: Request, res: Response) {
     try {
+      const userId = req.user!.id;
       const { endpoint } = req.body;
-      if (!endpoint) {
-        return res.status(400).json({ error: "Missing subscription endpoint." });
-      }
 
-      await PushService.removeSubscription(endpoint);
+      if (endpoint) {
+        await PushService.removeSubscription(endpoint);
+      }
+      await PushService.removeUserSubscriptions(userId);
+
       res.json({ success: true, message: "Unsubscribed successfully." });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
