@@ -55,6 +55,10 @@ model User {
   push_subscriptions  PushSubscription[]
   agendas             UserAgenda[]
   saved_events        SavedEvent[]
+  tasks_assigned      EventStaffTask[]     @relation("TaskAssignedTo")
+  tasks_created       EventStaffTask[]     @relation("TaskCreatedBy")
+  announcements_authored EventAnnouncement[] @relation("AnnouncementAuthor")
+  announcement_reactions AnnouncementReaction[]
 
   @@map("users")
 }
@@ -110,6 +114,7 @@ model Event {
   teams              Team[]
   agendas            UserAgenda[]
   saved_by           SavedEvent[]
+  staff_tasks        EventStaffTask[]
 
   @@map("events")
 }
@@ -234,13 +239,33 @@ model MentorAssignment {
 }
 
 model EventAnnouncement {
-  id         Int      @id @default(autoincrement())
-  event_id   Int
-  message    String
-  created_at DateTime @default(now())
-  event      Event    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  id           Int                    @id @default(autoincrement())
+  event_id     Int
+  title        String?                @db.VarChar(200)
+  message      String                 @db.Text
+  target_group String                 @default("all") // 'all' | 'participants' | 'staff'
+  author_id    Int?
+  created_at   DateTime               @default(now())
+
+  event        Event                  @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  author       User?                  @relation("AnnouncementAuthor", fields: [author_id], references: [id], onDelete: SetNull)
+  reactions    AnnouncementReaction[]
 
   @@map("event_announcements")
+}
+
+model AnnouncementReaction {
+  id              Int               @id @default(autoincrement())
+  announcement_id Int
+  user_id         Int
+  emoji           String            @db.VarChar(20)
+  created_at      DateTime          @default(now())
+
+  announcement    EventAnnouncement @relation(fields: [announcement_id], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([announcement_id, user_id, emoji])
+  @@map("announcement_reactions")
 }
 
 model EventRoleDefinition {
@@ -363,4 +388,25 @@ model SavedEvent {
 
   @@id([user_id, event_id])
   @@map("saved_events")
+}
+
+model EventStaffTask {
+  id             Int       @id @default(autoincrement())
+  event_id       Int
+  title          String    @db.VarChar(200)
+  description    String?   @db.Text
+  priority       String    @default("medium") // 'low' | 'medium' | 'high' | 'urgent'
+  status         String    @default("pending") // 'pending' | 'completed'
+  assigned_to_id Int
+  created_by_id  Int
+  due_date       DateTime?
+  completed_at   DateTime?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  event          Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  assigned_to    User      @relation("TaskAssignedTo", fields: [assigned_to_id], references: [id], onDelete: Cascade)
+  created_by     User      @relation("TaskCreatedBy", fields: [created_by_id], references: [id], onDelete: Cascade)
+
+  @@map("event_staff_tasks")
 }

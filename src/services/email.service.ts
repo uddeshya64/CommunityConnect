@@ -15,7 +15,10 @@ const EMAIL_USER = process.env.EMAIL_USER || "click.bait.ud.64@gmail.com";
 const EMAIL_PASS = process.env.EMAIL_PASS || "hmyo kpoz immi dbvl";
 const SENDER_NAME = process.env.BREVO_SENDER_NAME || "CommunityConnect";
 const BREVO_SENDER_NAME = SENDER_NAME;
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3001";
+const BASE_FRONTEND_URL = (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"))
+  ? process.env.FRONTEND_URL
+  : "https://community-connect-frontend-5oe1-beta.vercel.app";
+const FRONTEND_URL = BASE_FRONTEND_URL.replace(/\/$/, "");
 
 const BREVO_API_URL = process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email";
 const BREVO_API_KEY = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY || "";
@@ -284,10 +287,9 @@ export class EmailService {
         timeZoneName: "short",
       });
 
-      // --------------------------------------------------
-      // EVENT URL
-      // --------------------------------------------------
-      const eventUrl = `${FRONTEND_URL}/events/${reg.event.id}`;
+      const eventUrl = reg.team_id
+        ? `${FRONTEND_URL}/dashboard/team/${reg.team_id}`
+        : `${FRONTEND_URL}/events/${reg.event.id}`;
 
       // --------------------------------------------------
       // CREATE EMAIL PAYLOAD

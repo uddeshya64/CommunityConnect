@@ -226,4 +226,138 @@ export class EventStaffService {
       }
     });
   }
+
+  // 6. GET ALL ASSIGNED STAFF & PENDING INVITES FOR AN EVENT
+  static async getStaff(eventId: number) {
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        created_by: true,
+        creator: {
+          select: { id: true, name: true, email: true, avatar_url: true }
+        }
+      }
+    });
+    if (!event) throw new Error("Event not found");
+
+    const staffRoles = await prisma.eventUserRole.findMany({
+      where: { event_id: eventId },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatar_url: true } },
+        role: { select: { id: true, name: true, permissions: true, is_system: true } }
+      },
+      orderBy: { assigned_at: 'asc' }
+    });
+
+    const pendingInvites = await prisma.eventStaffInvite.findMany({
+      where: { event_id: eventId, status: 'pending' },
+      include: {
+        role: { select: { id: true, name: true } }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    return {
+      creator: event.creator,
+      staff: staffRoles,
+      pendingInvites: pendingInvites
+    };
+  }
+
+  // 7. UPDATE STAFF ROLE & PERMISSIONS OVERRIDE (DIRECT ADMIN CHANGE)
+  static async updateStaff(eventId: number, targetUserId: number, adminUserId?: number, roleId?: number, permissionsOverride?: string[]) {
+    const staffRecord = await prisma.eventUserRole.findUnique({
+      where: { event_id_user_id: { event_id: eventId, user_id: targetUserId } }
+    });
+    if (!staffRecord) throw new Error("Staff member not found for this event.");
+
+    const dataToUpdate: any = {};
+    if (roleId) {
+      const roleDef = await prisma.eventRoleDefinition.findUnique({ where: { id: roleId } });
+      if (!roleDef || roleDef.event_id !== eventId) {
+        throw new Error("Invalid role specified.");
+      }
+      dataToUpdate.role_id = roleId;
+    }
+    if (Array.isArray(permissionsOverride)) {
+      dataToUpdate.permissions_override = permissionsOverride;
+    }
+
+    // Update staff role in database
+    const updatedStaff = await prisma.eventUserRole.update({
+      where: { id: staffRecord.id },
+      data: dataToUpdate,
+      include: {
+        user: { select: { id: true, name: true, email: true, avatar_url: true } },
+        role: { select: { id: true, name: true, permissions: true, is_system: true } },
+        event: { select: { id: true, title: true } }
+      }
+    });
+
+    // Notify the target user about the direct role change
+    if (adminUserId) {
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminUserId },
+        select: { name: true }
+      });
+      const adminName = adminUser?.name || "An Admin";
+      const eventTitle = updatedStaff.event.title;
+      const newRoleName = updatedStaff.role.name;
+
+      PushService.sendPushToUser(targetUserId, {
+        title: `Role Changed in ${eventTitle}`,
+        body: `Your role has been changed to ${newRoleName} for "${eventTitle}" by ${adminName}.`,
+        url: `/events/${eventId}`,
+        tag: `role-update-${eventId}`,
+        actions: [{ action: "open", title: "View Event" }]
+      }).catch(console.error);
+
+      if (updatedStaff.user.email) {
+        PushService.sendPushToEmail(updatedStaff.user.email, {
+          title: `Role Changed in ${eventTitle}`,
+          body: `Your role has been changed to ${newRoleName} for "${eventTitle}" by ${adminName}.`,
+          url: `/events/${eventId}`,
+          tag: `role-update-${eventId}`
+        }).catch(console.error);
+      }
+    }
+
+    return updatedStaff;
+  }
+
+  // 8. REMOVE A STAFF MEMBER
+  static async removeStaff(eventId: number, targetUserId: number) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) throw new Error("Event not found.");
+
+    if (event.created_by === targetUserId) {
+      throw new Error("Cannot remove the event creator from event staff.");
+    }
+
+    const staffRecord = await prisma.eventUserRole.findUnique({
+      where: { event_id_user_id: { event_id: eventId, user_id: targetUserId } }
+    });
+    if (!staffRecord) throw new Error("Staff member not found.");
+
+    await prisma.eventUserRole.delete({
+      where: { id: staffRecord.id }
+    });
+
+    return { success: true, message: "Staff member removed successfully." };
+  }
+
+  // 9. CANCEL / REVOKE PENDING INVITE
+  static async cancelInvite(eventId: number, inviteId: number) {
+    const invite = await prisma.eventStaffInvite.findUnique({ where: { id: inviteId } });
+    if (!invite || invite.event_id !== eventId) {
+      throw new Error("Invitation not found.");
+    }
+
+    await prisma.eventStaffInvite.delete({
+      where: { id: inviteId }
+    });
+
+    return { success: true, message: "Invitation cancelled." };
+  }
 }

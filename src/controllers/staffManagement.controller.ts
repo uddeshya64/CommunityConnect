@@ -126,6 +126,69 @@ export const EventStaffController = {
       if (error instanceof ZodError) return res.status(400).json({ error: "Validation Error", details: error.issues });
       res.status(400).json({ error: error.message });
     }
+  },
+
+  // 5. GET ALL STAFF & INVITES
+  async getStaff(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.eventId);
+      const data = await EventStaffService.getStaff(eventId);
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // 6. UPDATE STAFF MEMBER ROLE & PERMISSIONS
+  async updateStaff(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.eventId);
+      const targetUserId = Number(req.params.userId);
+      const adminUserId = req.user!.id;
+      const { roleId, permissionsOverride } = req.body;
+
+      const updatedStaff = await EventStaffService.updateStaff(
+        eventId,
+        targetUserId,
+        adminUserId,
+        roleId ? Number(roleId) : undefined,
+        permissionsOverride
+      );
+
+      res.json({
+        success: true,
+        message: "Staff role & permissions updated directly. Notification sent to member.",
+        data: updatedStaff
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // 7. REMOVE STAFF MEMBER
+  async removeStaff(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.eventId);
+      const targetUserId = Number(req.params.userId);
+
+      const result = await EventStaffService.removeStaff(eventId, targetUserId);
+      res.json({ success: true, message: result.message });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  // 8. CANCEL PENDING INVITATION
+  async cancelInvite(req: Request, res: Response) {
+    try {
+      const eventId = Number(req.params.eventId);
+      const inviteId = Number(req.params.inviteId);
+
+      const result = await EventStaffService.cancelInvite(eventId, inviteId);
+      res.json({ success: true, message: result.message });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
   }
-  
+
 };

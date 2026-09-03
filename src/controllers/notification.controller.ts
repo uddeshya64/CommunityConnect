@@ -8,17 +8,17 @@ export const NotificationController = {
   async getNotifications(req: Request, res: Response) {
     try {
       const userId = req.user!.id;
-      
+
       // 1. Fetch user to get their email address
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { email: true }
       });
-      
+
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      
+
       const email = user.email;
 
       // 2. Fetch pending team invites
@@ -64,7 +64,17 @@ export const NotificationController = {
         }
       });
 
-      // 4. Format them consistently
+      // 4. Fetch active staff assignments / role updates
+      const staffRoles = await prisma.eventUserRole.findMany({
+        where: { user_id: userId },
+        include: {
+          event: { select: { id: true, title: true, banner_url: true } },
+          role: { select: { name: true } }
+        },
+        orderBy: { assigned_at: 'desc' }
+      });
+
+      // 5. Format them consistently
       const teamInvitesFormatted = teamInvites.map(ti => ({
         id: `team_${ti.id}`,
         type: 'TEAM_INVITE',
@@ -87,8 +97,18 @@ export const NotificationController = {
         expires_at: si.expires_at
       }));
 
-      // 5. Combine and sort by date descending
-      const allNotifications = [...teamInvitesFormatted, ...staffInvitesFormatted].sort(
+      const roleUpdatesFormatted = staffRoles.map(sr => ({
+        id: `role_${sr.id}`,
+        type: 'ROLE_UPDATE',
+        eventId: sr.event.id,
+        roleName: sr.role.name,
+        eventName: sr.event.title,
+        eventBanner: sr.event.banner_url || null,
+        created_at: sr.assigned_at
+      }));
+
+      // 6. Combine and sort by date descending
+      const allNotifications = [...teamInvitesFormatted, ...staffInvitesFormatted, ...roleUpdatesFormatted].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
@@ -143,12 +163,14 @@ export const NotificationController = {
 
   async unsubscribePush(req: Request, res: Response) {
     try {
+      const userId = req.user!.id;
       const { endpoint } = req.body;
-      if (!endpoint) {
-        return res.status(400).json({ error: "Missing subscription endpoint." });
-      }
 
-      await PushService.removeSubscription(endpoint);
+      if (endpoint) {
+        await PushService.removeSubscription(endpoint);
+      }
+      await PushService.removeUserSubscriptions(userId);
+
       res.json({ success: true, message: "Unsubscribed successfully." });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -163,12 +185,15 @@ export const NotificationController = {
         select: { name: true, email: true },
       });
 
+      const frontendUrl = "https://community-connect-frontend-5oe1-beta.vercel.app";
+      const targetUrl = `${frontendUrl.replace(/\/$/, "")}/notifications`;
+
       const result = await PushService.sendPushToUser(userId, {
         title: "CommunityConnect",
         body: `Hello ${user?.name || 'there'}! Native system notifications are working on this device.`,
         icon: "/icons/icon-192x192.png",
         badge: "/icons/badge-72x72.png",
-        url: "/notifications",
+        url: targetUrl,
         tag: "test-notification",
         actions: [
           { action: "open", title: "Open App" }

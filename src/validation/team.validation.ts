@@ -5,6 +5,10 @@ export const StartRegistrationSchema = z.object({
   eventId: z.coerce.number().int().positive("Valid Event ID is required"),
   // .trim() prevents users from passing just spaces like "   "
   teamName: z.string().trim().min(3, "Team name must be at least 3 characters").max(50, "Team name is too long").optional(),
+  members: z.array(z.object({
+    email: z.string().trim().email("Valid member email is required"),
+    role: z.string().optional(),
+  })).optional(),
 });
 
 // 2. Schema for Verifying Razorpay Payment
