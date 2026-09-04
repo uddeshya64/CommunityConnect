@@ -74,7 +74,44 @@ export const NotificationController = {
         orderBy: { assigned_at: 'desc' }
       });
 
-      // 5. Format them consistently
+      // 5. Fetch active live quizzes for events the user is registered for or staff of
+      const userRegistrations = await prisma.registration.findMany({
+        where: { user_id: userId },
+        select: { event_id: true }
+      });
+      const registeredEventIds = userRegistrations.map(r => r.event_id);
+      const staffEventIds = staffRoles.map(sr => sr.event.id);
+      const allUserEventIds = Array.from(new Set([...registeredEventIds, ...staffEventIds]));
+
+      const liveQuizSessions = await prisma.quizSession.findMany({
+        where: {
+          status: 'IN_PROGRESS',
+          quiz: {
+            event_id: { in: allUserEventIds }
+          }
+        },
+        include: {
+          quiz: {
+            include: {
+              event: { select: { id: true, title: true, banner_url: true } }
+            }
+          }
+        },
+        orderBy: { started_at: 'desc' }
+      });
+
+      // 6. Format them consistently
+      const liveQuizzesFormatted = liveQuizSessions.map(lq => ({
+        id: `quiz_${lq.id}`,
+        type: 'LIVE_QUIZ',
+        quizId: lq.quiz_id,
+        eventId: lq.quiz.event_id,
+        quizTitle: lq.quiz.title,
+        eventName: lq.quiz.event.title,
+        eventBanner: lq.quiz.event.banner_url || null,
+        created_at: lq.started_at || new Date()
+      }));
+
       const teamInvitesFormatted = teamInvites.map(ti => ({
         id: `team_${ti.id}`,
         type: 'TEAM_INVITE',
@@ -107,8 +144,13 @@ export const NotificationController = {
         created_at: sr.assigned_at
       }));
 
-      // 6. Combine and sort by date descending
-      const allNotifications = [...teamInvitesFormatted, ...staffInvitesFormatted, ...roleUpdatesFormatted].sort(
+      // 7. Combine and sort by date descending
+      const allNotifications = [
+        ...liveQuizzesFormatted,
+        ...teamInvitesFormatted,
+        ...staffInvitesFormatted,
+        ...roleUpdatesFormatted
+      ].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 

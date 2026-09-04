@@ -164,5 +164,20 @@ async uploadBanner(req: Request, res: Response) {
       error: error.message,
     });
   }
-}
+},
+
+  // GET /api/events/contributed
+  async getContributedEvents(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id || (req.user as any)?.userId;
+      if (!userId) {
+        return res.json({ success: true, data: [] });
+      }
+      const result = await EventService.getContributedEvents(Number(userId));
+      res.json({ success: true, data: result });
+    } catch (error: any) {
+      console.error("getContributedEvents error:", error);
+      res.json({ success: true, data: [] });
+    }
+  }
 };

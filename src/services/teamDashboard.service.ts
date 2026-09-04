@@ -42,6 +42,7 @@ export class TeamDashboardService {
             end_date: true,
             min_team_size: true,
             max_team_size: true,
+            registration_type: true,
             timelines: {
               orderBy: { start_time: 'asc' }
             }
@@ -66,6 +67,7 @@ export class TeamDashboardService {
               end_date: true,
               min_team_size: true,
               max_team_size: true,
+              registration_type: true,
               timelines: {
                 orderBy: { start_time: 'asc' }
               }
@@ -194,10 +196,23 @@ export class TeamDashboardService {
   static async inviteMember(teamId: number, leaderId: number, inviteeEmail: string) {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      include: { event: { select: { title: true } } }
+      include: {
+        event: { select: { title: true, registration_type: true, max_team_size: true } },
+        members: true,
+        invites: { where: { status: 'pending' } }
+      }
     });
     if (!team || team.leader_id !== leaderId) {
       throw new Error("Unauthorized: Only the team leader can invite members");
+    }
+
+    if (team.event.registration_type === 'solo' || team.event.max_team_size <= 1) {
+      throw new Error("This event is for solo participation and does not allow team members.");
+    }
+
+    const currentSeatsTaken = team.members.length + team.invites.length;
+    if (currentSeatsTaken >= team.event.max_team_size) {
+      throw new Error(`Team size limit reached. Maximum allowed members: ${team.event.max_team_size}`);
     }
 
     const normalizedEmail = inviteeEmail.toLowerCase();

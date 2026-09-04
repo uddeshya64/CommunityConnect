@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { EmailService } from './email.service';
-import { EVENT_PERMISSIONS, EventPermission } from '../utils/constants/permissions';
+import { EVENT_PERMISSIONS, EventPermission, getDefaultPermissionsForRole } from '../utils/constants/permissions';
 import { PushService } from './push.service';
 
 const prisma = new PrismaClient();
@@ -10,7 +10,7 @@ export class EventStaffService {
 
   // Fetch all available roles for a specific event
   static async getRoles(eventId: number) {
-    return prisma.eventRoleDefinition.findMany({
+    const roles = await prisma.eventRoleDefinition.findMany({
       where: { event_id: eventId },
       select: {
         id: true,
@@ -19,6 +19,35 @@ export class EventStaffService {
         is_system: true
       },
       orderBy: { name: 'asc' }
+    });
+
+    return roles.map((r) => {
+      let perms = (r.permissions as string[]) || [];
+      if (!perms || perms.length === 0) {
+        perms = getDefaultPermissionsForRole(r.name);
+      } else {
+        if (!perms.includes(EVENT_PERMISSIONS.VIEW_DASHBOARD)) {
+          perms = [...perms, EVENT_PERMISSIONS.VIEW_DASHBOARD];
+        }
+        if (r.name.toLowerCase().includes('registration')) {
+          perms = Array.from(
+            new Set([
+              ...perms,
+              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
+              EVENT_PERMISSIONS.MANAGE_FORMS,
+              EVENT_PERMISSIONS.MANAGE_TICKETS,
+              EVENT_PERMISSIONS.MANAGE_INVITATIONS,
+              EVENT_PERMISSIONS.MANAGE_CHECK_IN,
+              EVENT_PERMISSIONS.MANAGE_REFUNDS,
+              EVENT_PERMISSIONS.VIEW_DASHBOARD
+            ])
+          );
+        }
+        if (r.name.toLowerCase().includes('admin')) {
+          perms = Object.values(EVENT_PERMISSIONS);
+        }
+      }
+      return { ...r, permissions: perms };
     });
   }
 
@@ -30,11 +59,15 @@ export class EventStaffService {
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) throw new Error("Event not found");
 
+    const effectivePerms = (permissions && permissions.length > 0)
+      ? permissions
+      : getDefaultPermissionsForRole(name);
+
     return prisma.eventRoleDefinition.create({
       data: {
         event_id: eventId,
         name: name,
-        permissions: permissions, // e.g., ["MANAGE_COMMUNICATIONS", "VIEW_DASHBOARD"]
+        permissions: effectivePerms,
         is_system: false // Marks this as a user-created role, not a default
       }
     });
@@ -258,9 +291,49 @@ export class EventStaffService {
       orderBy: { created_at: 'desc' }
     });
 
+    const formattedStaff = staffRoles.map((st) => {
+      const userOverrides = st.permissions_override as string[] | null;
+      let effectivePermissions = Array.isArray(userOverrides) && userOverrides.length > 0
+        ? userOverrides
+        : ((st.role?.permissions as string[]) || []);
+
+      if (!effectivePermissions || effectivePermissions.length === 0) {
+        effectivePermissions = getDefaultPermissionsForRole(st.role?.name || '');
+      } else {
+        if (!effectivePermissions.includes(EVENT_PERMISSIONS.VIEW_DASHBOARD)) {
+          effectivePermissions = [...effectivePermissions, EVENT_PERMISSIONS.VIEW_DASHBOARD];
+        }
+        if (st.role?.name?.toLowerCase().includes('registration')) {
+          effectivePermissions = Array.from(
+            new Set([
+              ...effectivePermissions,
+              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
+              EVENT_PERMISSIONS.MANAGE_FORMS,
+              EVENT_PERMISSIONS.MANAGE_TICKETS,
+              EVENT_PERMISSIONS.MANAGE_INVITATIONS,
+              EVENT_PERMISSIONS.MANAGE_CHECK_IN,
+              EVENT_PERMISSIONS.MANAGE_REFUNDS,
+              EVENT_PERMISSIONS.VIEW_DASHBOARD
+            ])
+          );
+        }
+        if (st.role?.name?.toLowerCase().includes('admin')) {
+          effectivePermissions = Object.values(EVENT_PERMISSIONS);
+        }
+      }
+
+      return {
+        ...st,
+        role: st.role ? {
+          ...st.role,
+          permissions: effectivePermissions
+        } : st.role
+      };
+    });
+
     return {
       creator: event.creator,
-      staff: staffRoles,
+      staff: formattedStaff,
       pendingInvites: pendingInvites
     };
   }
@@ -335,16 +408,24 @@ export class EventStaffService {
       throw new Error("Cannot remove the event creator from event staff.");
     }
 
-    const staffRecord = await prisma.eventUserRole.findUnique({
-      where: { event_id_user_id: { event_id: eventId, user_id: targetUserId } }
-    });
-    if (!staffRecord) throw new Error("Staff member not found.");
-
-    await prisma.eventUserRole.delete({
-      where: { id: staffRecord.id }
+    const staffUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true }
     });
 
-    return { success: true, message: "Staff member removed successfully." };
+    // A. Delete EventUserRole (Revoke staff contract & access)
+    await prisma.eventUserRole.deleteMany({
+      where: { event_id: eventId, user_id: targetUserId }
+    });
+
+    // B. Delete any pending or accepted EventStaffInvite for this user's email
+    if (staffUser?.email) {
+      await prisma.eventStaffInvite.deleteMany({
+        where: { event_id: eventId, email: staffUser.email.toLowerCase() }
+      });
+    }
+
+    return { success: true, message: "Staff member removed and access revoked successfully." };
   }
 
   // 9. CANCEL / REVOKE PENDING INVITE
@@ -354,10 +435,26 @@ export class EventStaffService {
       throw new Error("Invitation not found.");
     }
 
-    await prisma.eventStaffInvite.delete({
-      where: { id: inviteId }
+    // A. Find if a user exists with this invited email
+    const invitedUser = await prisma.user.findUnique({
+      where: { email: invite.email.toLowerCase() }
     });
 
-    return { success: true, message: "Invitation cancelled." };
+    // B. Delete all invites for this email and event
+    await prisma.eventStaffInvite.deleteMany({
+      where: { event_id: eventId, email: invite.email.toLowerCase() }
+    });
+
+    // C. Delete any EventUserRole contract for this user on this event (revoking staff access immediately)
+    if (invitedUser) {
+      await prisma.eventUserRole.deleteMany({
+        where: {
+          event_id: eventId,
+          user_id: invitedUser.id
+        }
+      });
+    }
+
+    return { success: true, message: "Invitation cancelled and staff access revoked." };
   }
 }

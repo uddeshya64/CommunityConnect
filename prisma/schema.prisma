@@ -59,6 +59,8 @@ model User {
   tasks_created       EventStaffTask[]     @relation("TaskCreatedBy")
   announcements_authored EventAnnouncement[] @relation("AnnouncementAuthor")
   announcement_reactions AnnouncementReaction[]
+  quiz_responses         QuizResponse[]
+  quiz_leaderboards      QuizLeaderboard[]
 
   @@map("users")
 }
@@ -115,6 +117,7 @@ model Event {
   agendas            UserAgenda[]
   saved_by           SavedEvent[]
   staff_tasks        EventStaffTask[]
+  quizzes            Quiz[]
 
   @@map("events")
 }
@@ -409,4 +412,95 @@ model EventStaffTask {
   created_by     User      @relation("TaskCreatedBy", fields: [created_by_id], references: [id], onDelete: Cascade)
 
   @@map("event_staff_tasks")
+}
+
+model Quiz {
+  id          Int       @id @default(autoincrement())
+  event_id    Int
+  title       String    @db.VarChar(150)
+  description String?
+  status      String    @default("DRAFT") // DRAFT, LIVE, COMPLETED
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  
+  event        Event             @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  questions    Question[]
+  sessions     QuizSession[]
+  leaderboards QuizLeaderboard[]
+  
+  @@map("quizzes")
+}
+
+model Question {
+  id          Int       @id @default(autoincrement())
+  quiz_id     Int
+  text        String    @db.VarChar(500)
+  time_limit  Int       @default(30) // in seconds
+  points      Int       @default(1000)
+  order       Int       @default(0)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  
+  quiz        Quiz      @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  options     Option[]
+  responses   QuizResponse[]
+  
+  @@map("questions")
+}
+
+model Option {
+  id          Int       @id @default(autoincrement())
+  question_id Int
+  text        String    @db.VarChar(200)
+  is_correct  Boolean   @default(false)
+  
+  question    Question  @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  responses   QuizResponse[]
+  
+  @@map("options")
+}
+
+model QuizSession {
+  id                Int       @id @default(autoincrement())
+  quiz_id           Int
+  status            String    @default("WAITING") // WAITING, IN_PROGRESS, COMPLETED
+  current_question  Int?      // ID of current question
+  started_at        DateTime?
+  ended_at          DateTime?
+  
+  quiz              Quiz      @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  
+  @@map("quiz_sessions")
+}
+
+model QuizResponse {
+  id              Int       @id @default(autoincrement())
+  user_id         Int
+  question_id     Int
+  option_id       Int?
+  points_awarded  Int       @default(0)
+  time_taken      Float     @default(0) // seconds taken to answer
+  created_at      DateTime  @default(now())
+  
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  question        Question  @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  option          Option?   @relation(fields: [option_id], references: [id], onDelete: Cascade)
+  
+  @@unique([user_id, question_id])
+  @@map("quiz_responses")
+}
+
+model QuizLeaderboard {
+  id          Int       @id @default(autoincrement())
+  quiz_id     Int
+  user_id     Int
+  score       Int       @default(0)
+  rank        Int?
+  updated_at  DateTime  @updatedAt
+  
+  quiz        Quiz      @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@unique([quiz_id, user_id])
+  @@map("quiz_leaderboards")
 }
