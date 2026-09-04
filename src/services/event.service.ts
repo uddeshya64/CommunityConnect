@@ -1,7 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { EVENT_PERMISSIONS } from '../utils/constants/permissions';
-
-
+import { EVENT_PERMISSIONS, getDefaultPermissionsForRole } from '../utils/constants/permissions';
 
 import supabase from "../config/supabase";
 
@@ -141,25 +139,14 @@ export class EventService {
           {
             event_id: newEvent.id,
             name: "Admin",
-            permissions: [
-              EVENT_PERMISSIONS.MANAGE_EVENT,
-              EVENT_PERMISSIONS.MANAGE_STAFF,
-              EVENT_PERMISSIONS.VIEW_DASHBOARD,
-              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
-              EVENT_PERMISSIONS.MANAGE_FORMS,
-              EVENT_PERMISSIONS.MANAGE_TICKETS,
-              EVENT_PERMISSIONS.MANAGE_CHECK_IN,
-              EVENT_PERMISSIONS.MANAGE_AGENDA,
-              EVENT_PERMISSIONS.MANAGE_SPEAKERS,
-              EVENT_PERMISSIONS.SCORE_SUBMISSIONS,
-              EVENT_PERMISSIONS.MANAGE_COMMUNICATIONS
-            ],
+            permissions: Object.values(EVENT_PERMISSIONS),
             is_system: true
           },
           {
             event_id: newEvent.id,
             name: "Registration Manager",
             permissions: [
+              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
               EVENT_PERMISSIONS.MANAGE_FORMS,
               EVENT_PERMISSIONS.MANAGE_TICKETS,
               EVENT_PERMISSIONS.MANAGE_INVITATIONS,
@@ -173,11 +160,6 @@ export class EventService {
             event_id: newEvent.id,
             name: "Program Manager",
             permissions: [
-              EVENT_PERMISSIONS.MANAGE_AGENDA,
-              EVENT_PERMISSIONS.MANAGE_TRACKS,
-              EVENT_PERMISSIONS.MANAGE_SESSIONS,
-              EVENT_PERMISSIONS.MANAGE_SPEAKERS,
-              EVENT_PERMISSIONS.MANAGE_CONTENT,
               EVENT_PERMISSIONS.VIEW_DASHBOARD
             ],
             is_system: true
@@ -186,12 +168,7 @@ export class EventService {
             event_id: newEvent.id,
             name: "Volunteer",
             permissions: [
-              EVENT_PERMISSIONS.VIEW_DASHBOARD,
-              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
-              EVENT_PERMISSIONS.VIEW_SHIFTS,
-              EVENT_PERMISSIONS.MANAGE_ASSIGNED_TASKS,
-              EVENT_PERMISSIONS.ACKNOWLEDGE_TASKS,
-              EVENT_PERMISSIONS.MANAGE_CHECK_IN
+              EVENT_PERMISSIONS.VIEW_DASHBOARD
             ],
             is_system: true
           },
@@ -331,9 +308,32 @@ export class EventService {
       if (staffRole) {
         userContext.role = staffRole.role.name;
         const userOverrides = staffRole.permissions_override as string[] | null;
-        const effectivePermissions = Array.isArray(userOverrides)
+        let effectivePermissions = (Array.isArray(userOverrides) && userOverrides.length > 0)
           ? userOverrides
           : ((staffRole.role.permissions as string[]) || []);
+
+        if (!effectivePermissions || effectivePermissions.length === 0) {
+          effectivePermissions = getDefaultPermissionsForRole(staffRole.role.name);
+        } else {
+          if (!effectivePermissions.includes(EVENT_PERMISSIONS.VIEW_DASHBOARD)) {
+            effectivePermissions = [...effectivePermissions, EVENT_PERMISSIONS.VIEW_DASHBOARD];
+          }
+          if (staffRole.role.name.toLowerCase().includes('registration')) {
+            const regPerms = [
+              EVENT_PERMISSIONS.MANAGE_ATTENDEES,
+              EVENT_PERMISSIONS.MANAGE_FORMS,
+              EVENT_PERMISSIONS.MANAGE_TICKETS,
+              EVENT_PERMISSIONS.MANAGE_INVITATIONS,
+              EVENT_PERMISSIONS.MANAGE_CHECK_IN,
+              EVENT_PERMISSIONS.MANAGE_REFUNDS,
+              EVENT_PERMISSIONS.VIEW_DASHBOARD
+            ];
+            effectivePermissions = Array.from(new Set([...effectivePermissions, ...regPerms]));
+          }
+          if (staffRole.role.name.toLowerCase().includes('admin')) {
+            effectivePermissions = Object.values(EVENT_PERMISSIONS);
+          }
+        }
         userContext.permissions = effectivePermissions;
       }
 
@@ -436,7 +436,28 @@ export class EventService {
   static async deleteEvent(eventId: number, userId: number) {
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) throw new Error("Event not found");
-    if (event.created_by !== userId) throw new Error("Only the creator can delete an event");
+
+    const isCreator = event.created_by === Number(userId);
+    if (!isCreator) {
+      const staffRole = await prisma.eventUserRole.findUnique({
+        where: { event_id_user_id: { event_id: eventId, user_id: Number(userId) } },
+        include: { role: true }
+      });
+
+      let hasPermission = false;
+      if (staffRole) {
+        const rolePermissions = (staffRole.role.permissions as string[]) || [];
+        const overrides = (staffRole.permissions_override as string[]) || [];
+        hasPermission =
+          rolePermissions.includes(EVENT_PERMISSIONS.MANAGE_EVENT) ||
+          overrides.includes(EVENT_PERMISSIONS.MANAGE_EVENT) ||
+          staffRole.role.name.toLowerCase().includes("admin");
+      }
+
+      if (!hasPermission) {
+        throw new Error("Only the creator or authorized event admin can delete an event");
+      }
+    }
 
     return prisma.event.delete({ where: { id: eventId } });
   }
@@ -515,5 +536,49 @@ export class EventService {
     });
 
     return { events: formattedEvents, total, totalPages: Math.ceil(total / limit) };
+  }
+
+  // 12. GET EVENTS WHERE USER IS A CONTRIBUTOR / STAFF MEMBER
+  static async getContributedEvents(userId: number) {
+    try {
+      if (!userId || isNaN(userId)) return [];
+
+      const staffRoles = await prisma.eventUserRole.findMany({
+        where: { user_id: userId },
+        include: {
+          event: {
+            include: {
+              creator: { select: { id: true, name: true, avatar_url: true } },
+              type: { select: { name: true } },
+              timelines: { select: { tags: true } }
+            }
+          },
+          role: { select: { id: true, name: true } }
+        }
+      });
+
+      const formattedEvents = staffRoles
+        .filter(sr => sr && sr.event)
+        .map(sr => {
+          const { type, timelines, ...rest } = sr.event;
+          const aggregatedTags = Array.from(
+            new Set((timelines || []).flatMap((t: any) => t.tags || []))
+          );
+
+          return {
+            ...rest,
+            type: type ? type.name : 'Event',
+            tags: aggregatedTags,
+            staffRoleName: sr.role ? sr.role.name : 'Staff Member',
+            staffRoleId: sr.role_id,
+            assignedAt: sr.assigned_at
+          };
+        });
+
+      return formattedEvents;
+    } catch (error: any) {
+      console.error("Error in getContributedEvents:", error);
+      return [];
+    }
   }
 }

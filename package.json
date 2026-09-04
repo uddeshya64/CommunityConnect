@@ -46,6 +46,7 @@
     "qrcode": "^1.5.4",
     "razorpay": "^2.9.6",
     "resend": "^6.18.0",
+    "socket.io": "^4.8.3",
     "stream-browserify": "^3.0.0",
     "web-push": "^3.6.7",
     "zod": "^4.3.6"

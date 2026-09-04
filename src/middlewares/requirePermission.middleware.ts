@@ -41,9 +41,14 @@ export const requirePermission = (requiredPermission: any) => {
 
       // 5. Extract effective permissions (if user-specific overrides exist, use them; otherwise use base role permissions)
       const userOverrides = staffRecord.permissions_override as string[] | null;
-      const effectivePermissions = Array.isArray(userOverrides)
+      const effectivePermissions = Array.isArray(userOverrides) && userOverrides.length > 0
         ? userOverrides
-        : ((staffRecord.role.permissions as string[]) || []);
+        : ((staffRecord.role?.permissions as string[]) || []);
+
+      // 5b. Admin role or MANAGE_EVENT permission grants full access to all staff routes
+      if (staffRecord.role?.name === 'Admin' || effectivePermissions.includes('MANAGE_EVENT')) {
+        return next();
+      }
 
       // 6. Check if they have the specific atomic permission required for this route
       const permissionsToCheck = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
