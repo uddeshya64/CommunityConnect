@@ -16,6 +16,9 @@ import helmet from "helmet";
 import cors from "cors";
 import passport from "passport";
 import { PrismaClient } from "@prisma/client";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { setupQuizSockets } from "./socket/quiz.socket";
 
 // Passport configuration
 import "./config/passport";
@@ -36,6 +39,9 @@ import imageRoutes from "./routes/image";
 import registrationRoutes from "./routes/registeration.routes";
 import { EventSchedulerService } from "./services/eventScheduler.service";
 import agendaRoutes from "./routes/agenda.routes";
+import quizRoutes from "./routes/quiz.routes";
+import { getActiveQuiz } from "./controllers/quiz.controller";
+import { authenticate } from "./middlewares/auth.middleware";
 
 import { config } from "./config/env";
 
@@ -44,6 +50,7 @@ import { config } from "./config/env";
 // =========================================
 
 const app = express();
+const httpServer = createServer(app);
 const prisma = new PrismaClient();
 
 const PORT = Number(config.PORT) || 5000;
@@ -243,6 +250,21 @@ app.use(
 );
 
 // =========================================
+// QUIZ ROUTES
+// =========================================
+
+app.use(
+  "/api/events/:eventId/quizzes",
+  quizRoutes
+);
+
+app.get(
+  "/api/quizzes/active",
+  authenticate,
+  getActiveQuiz
+);
+
+// =========================================
 // EVENT STAFF ROUTES
 // =========================================
 
@@ -351,8 +373,18 @@ const startServer = async () => {
       "✅ Database connected successfully"
     );
 
+    const io = new Server(httpServer, {
+      cors: {
+        origin: (origin, callback) => callback(null, origin || "*"),
+        methods: ["GET", "POST"],
+        credentials: true
+      },
+      allowEIO3: true
+    });
+    setupQuizSockets(io);
+
     // Start Express server
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(
         `🚀 Server running on http://localhost:${PORT}`
       );

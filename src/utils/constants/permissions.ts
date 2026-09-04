@@ -62,3 +62,28 @@ export const EVENT_PERMISSIONS = {
 } as const;
 
 export type EventPermission = keyof typeof EVENT_PERMISSIONS;
+
+export function getDefaultPermissionsForRole(roleName: string): string[] {
+  const normalized = (roleName || '').trim().toLowerCase();
+
+  if (normalized.includes('admin') || normalized.includes('director') || normalized.includes('organizer') || normalized.includes('owner')) {
+    // Admin gets all permissions by default
+    return Object.values(EVENT_PERMISSIONS);
+  }
+
+  if (normalized.includes('registration')) {
+    // Registration role gets all registration-related permissions
+    return [
+      EVENT_PERMISSIONS.MANAGE_ATTENDEES,
+      EVENT_PERMISSIONS.MANAGE_FORMS,
+      EVENT_PERMISSIONS.MANAGE_TICKETS,
+      EVENT_PERMISSIONS.MANAGE_INVITATIONS,
+      EVENT_PERMISSIONS.MANAGE_CHECK_IN,
+      EVENT_PERMISSIONS.MANAGE_REFUNDS,
+      EVENT_PERMISSIONS.VIEW_DASHBOARD
+    ];
+  }
+
+  // All other staff members get view level permissions for now
+  return [EVENT_PERMISSIONS.VIEW_DASHBOARD];
+}

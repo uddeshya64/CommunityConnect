@@ -15,6 +15,7 @@ const router = Router();
 // OR just handle the "no token" case in middleware to not crash but leave req.user undefined.
 router.get('/types', optionalAuthenticate, EventController.getTypes);
 router.get('/saved', authenticate, EventController.getSaved);
+router.get('/contributed', authenticate, EventController.getContributedEvents);
 router.get('/', optionalAuthenticate, EventController.getFeed);
 router.post( "/:eventId/banner",authenticate, upload.single("banner"),EventController.uploadBanner); // banner image in event
 router.post('/:id/save', authenticate, EventController.save);
